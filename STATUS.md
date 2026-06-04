@@ -3,12 +3,12 @@
 > Read this first when picking up on a new machine. Then read CLAUDE.md for the full plan.
 
 ## Current Phase
-**Phase 2 — Test Program Suite** (not started — start here)
+**Phase 3 — Trace Dataset Builder** (not started — start here)
 
 ## Phase Checklist
 
 - [x] Phase 1 — Go Trace Collector (`tracer/tracer.go`, `parser.go`, `state.go`) — **merged to main**
-- [ ] Phase 2 — Test Program Suite (`programs/01_*.go` … `15_*.go`)
+- [x] Phase 2 — Test Program Suite (`programs/01_*.go` … `15_*.go`) — **on branch phase-2-programs**
 - [ ] Phase 3 — Trace Dataset Builder (`dataset/builder.go`, `schema.go`)
 - [ ] Phase 4 — Zero-shot Evaluator (`eval/zero_shot.go`)
 - [ ] Phase 5 — Results Analysis (`eval/analyze.py`)
@@ -23,47 +23,50 @@
 - 17 tests passing (`go test ./tracer/...`)
 - Trace API: `golang.org/x/exp/trace` (public API, Go 1.26.4)
 
-## What's Next — Phase 2 Instructions
-Create branch `phase-2-programs`, then build `programs/` with 15 Go programs.
+## What's Done
 
-Each program needs:
-1. A `// WEAVE_META` comment block at the top (outcome, concurrency_pattern, goroutine_count, expected_nondeterminism, description)
-2. This trace boilerplate at the top of `main()`:
-```go
-if tf := os.Getenv("WEAVE_TRACE_FILE"); tf != "" {
-    f, err := os.Create(tf)
-    if err == nil {
-        if err := trace.Start(f); err == nil {
-            defer func() { trace.Stop(); f.Close() }()
-        }
-    }
-}
-```
-Imports needed: `"os"`, `"runtime/trace"`
+### Phase 2 — Test Program Suite ✓
+- 15 programs in `programs/` covering all concurrency patterns from CLAUDE.md
+- 5 programs reproduce bug patterns from Tu et al. ASPLOS'19 (citable provenance for paper):
+  - `04_deadlock.go` — WaitGroup misuse, Docker#25384
+  - `05_race_condition.go` — concurrent map writes without sync (non-blocking/shared-memory class)
+  - `06_channel_select.go` — goroutine leak via unbuffered channel + timeout, Kubernetes finishReq
+  - `12_once.go` — sync.Once prevents double-close panic, Docker#24007
+  - `07_worker_pool.go` — worker pool with correct lock ordering (fix of Kubernetes quota deadlock)
+- 2 bug/fix pairs for the paper's evaluation: 04↔11 (WaitGroup), 06↔09 (timeout + channel buffer)
+- Go 1.22+ loop-closure bug is gone (per-iteration variables); race in 05 uses concurrent map writes instead
+- Deadlock sentinel pattern: `go func() { time.Sleep(24*time.Hour) }()` prevents runtime deadlock
+  detector from firing before RunProgram context deadline (gives TimedOut=true as documented)
+- All 17 Phase 1 tracer tests still pass
 
-Programs to build (in order):
-```
-01_simple_channel.go       — one goroutine, one channel, clean send/receive
-02_multiple_goroutines.go  — 3 goroutines, fan-out pattern
-03_mutex_counter.go        — shared counter with mutex
-04_deadlock.go             — intentional deadlock
-05_race_condition.go       — intentional race condition
-06_channel_select.go       — select across multiple channels
-07_worker_pool.go          — classic worker pool
-08_pipeline.go             — pipeline (stage1 → stage2 → stage3)
-09_timeout_pattern.go      — context with timeout
-10_channel_close.go        — close semantics, range over channel
-11_waitgroup.go            — sync.WaitGroup
-12_once.go                 — sync.Once
-13_buffered_channel.go     — buffered vs unbuffered difference
-14_goroutine_leak.go       — goroutine that never exits
-15_fan_in.go               — fan-in, multiple producers one consumer
-```
+## What's Next — Phase 3 Instructions
+Create branch `phase-3-dataset`, then build `dataset/builder.go` and `dataset/schema.go`.
 
-After writing each program, do a quick smoke test:
-```bash
-WEAVE_TRACE_FILE=/tmp/test.trace go run programs/<file>.go
-```
+The builder must:
+1. Walk `programs/` and collect all `.go` files
+2. Parse `// WEAVE_META` header from each file into metadata struct
+3. For each program, call `tracer.RunProgram()` 5 times (different interleavings)
+4. For each run that produces a trace, call `tracer.ParseTrace()` to get `[]StateSnapshot`
+5. For each trace, produce 3 evaluation examples at 25%, 50%, 75% of events:
+   ```json
+   {
+     "program_id": "03_mutex_counter",
+     "program_source": "...full source...",
+     "partial_trace": [ ...first N snapshots... ],
+     "next_event": { ...snapshot N+1... },
+     "full_outcome": "success",
+     "concurrency_pattern": "mutex",
+     "goroutine_count": 5,
+     "nondeterminism": "medium"
+   }
+   ```
+6. Write output to `dataset/output/<program_id>_<run>.json` (gitignored)
+7. Handle TimedOut=true (no trace file) — record as deadlock example with empty partial_trace
+8. Handle race programs — record RaceOutput alongside the example
+
+Target: 15 programs × 5 runs × 3 splits = ~225 examples (fewer for deadlock/leak programs)
+
+Key: programs 04 and 14 may time out (use a short context, e.g. 500ms, for deadlock programs)
 
 ## Known Design Decisions
 - `channels` and `mutexes` in `StateSnapshot` are always empty — `go tool trace` doesn't expose object addresses
