@@ -3,14 +3,14 @@
 > Read this first when picking up on a new machine. Then read CLAUDE.md for the full plan.
 
 ## Current Phase
-**Phase 4 — Zero-shot Evaluator** (not started — start here)
+**Phase 5 — Results Analysis** (not started — start here)
 
 ## Phase Checklist
 
 - [x] Phase 1 — Go Trace Collector (`tracer/tracer.go`, `parser.go`, `state.go`) — **merged to main**
 - [x] Phase 2 — Test Program Suite (`programs/01_*.go` … `15_*.go`) — **merged to main**
 - [x] Phase 3 — Trace Dataset Builder (`dataset/builder.go`, `schema.go`) — **merged to main**
-- [ ] Phase 4 — Zero-shot Evaluator (`eval/zero_shot.go`)
+- [x] Phase 4 — Zero-shot Evaluator (`eval/zero_shot.go`) — **merged to main**
 - [ ] Phase 5 — Results Analysis (`eval/analyze.py`)
 
 ---
@@ -61,6 +61,16 @@ For a full conference submission later, expand to 30–50 programs. For now, pro
 
 ---
 
+### Phase 4 — Zero-shot Evaluator ✓
+- `eval/zero_shot.go` — loads 212 examples, calls Gemini API concurrently (10 goroutines),
+  scores `correct_event_type` and `correct_goroutine_id`, writes per-example result JSON
+- SDK: `google.golang.org/genai v1.59.0`; thinking budget set to 0
+- Config: `GEMINI_API_KEY` + `MODEL` from `.env`
+- Run: `go run eval/zero_shot.go` (requires `.env` in repo root)
+- Results go to `eval/results/` (gitignored)
+
+---
+
 ### Phase 3 — Trace Dataset Builder ✓
 - `dataset/schema.go` — `WeaveMetadata` and `EvalExample` types
 - `dataset/builder.go` — globs `programs/*.go`, runs each 5×, emits split examples
@@ -70,20 +80,31 @@ For a full conference submission later, expand to 30–50 programs. For now, pro
 
 ---
 
-## What's Next — Phase 4 Instructions
+## What's Next — Phase 5 Instructions
 
-Create branch `phase-4-eval`, then build `eval/zero_shot.go` (see CLAUDE.md §Phase 4).
+Create branch `phase-5-analysis`, then build `eval/analyze.py` (see CLAUDE.md §Phase 5).
 
 Key inputs:
-- `dataset/output/*.json` — the 212 eval examples
-- `ANTHROPIC_API_KEY` — must be set in environment
-- Model: `claude-sonnet-4-6`
+- `eval/results/*_result.json` — one file per eval example, written by `zero_shot.go`
 
-Run order:
+Run Phase 4 first to populate `eval/results/`:
 ```bash
-go run eval/zero_shot.go     # calls Claude API, writes results to eval/results/
-python eval/analyze.py       # prints accuracy report
+# create .env with GEMINI_API_KEY and MODEL=gemini-3.5-flash
+go run eval/zero_shot.go
 ```
+
+Then run analysis:
+```bash
+python eval/analyze.py
+```
+
+Expected outputs (to stdout):
+- Overall accuracy by event type
+- Accuracy by concurrency pattern
+- Accuracy by nondeterminism level
+- Deadlock/race detection rate
+- Confusion matrix (predicted vs actual event types)
+- Most common failure patterns
 
 ---
 
