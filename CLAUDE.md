@@ -199,11 +199,25 @@ This is the output we need to decide if training is worth pursuing.
 
 ---
 
+## Cross-Machine Continuity
+
+`STATUS.md` (in the repo root) is the live progress tracker. It is updated after each phase
+or significant milestone and committed to git. When picking up on a new machine:
+
+1. `git pull` to get the latest code and status
+2. Read `STATUS.md` to know exactly where things stand and what's next
+3. `CLAUDE.md` has the plan; `STATUS.md` has the current state
+
+Claude Code: always read `STATUS.md` at the start of a session before doing any work.
+
+---
+
 ## Project Structure
 
 ```
 weave/
-  CLAUDE.md                    ← this file
+  CLAUDE.md                    ← this file (the plan)
+  STATUS.md                    ← live progress tracker (update after each phase)
   README.md                    ← keep updated as you build
   tracer/
     tracer.go                  ← core trace collection logic
