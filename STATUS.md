@@ -3,13 +3,13 @@
 > Read this first when picking up on a new machine. Then read CLAUDE.md for the full plan.
 
 ## Current Phase
-**Phase 3 — Trace Dataset Builder** (not started — start here)
+**Phase 4 — Zero-shot Evaluator** (not started — start here)
 
 ## Phase Checklist
 
 - [x] Phase 1 — Go Trace Collector (`tracer/tracer.go`, `parser.go`, `state.go`) — **merged to main**
 - [x] Phase 2 — Test Program Suite (`programs/01_*.go` … `15_*.go`) — **merged to main**
-- [ ] Phase 3 — Trace Dataset Builder (`dataset/builder.go`, `schema.go`)
+- [x] Phase 3 — Trace Dataset Builder (`dataset/builder.go`, `schema.go`) — **merged to main**
 - [ ] Phase 4 — Zero-shot Evaluator (`eval/zero_shot.go`)
 - [ ] Phase 5 — Results Analysis (`eval/analyze.py`)
 
@@ -61,65 +61,29 @@ For a full conference submission later, expand to 30–50 programs. For now, pro
 
 ---
 
-## What's Next — Phase 3 Instructions
+### Phase 3 — Trace Dataset Builder ✓
+- `dataset/schema.go` — `WeaveMetadata` and `EvalExample` types
+- `dataset/builder.go` — globs `programs/*.go`, runs each 5×, emits split examples
+- `dataset/output/` — gitignored; regenerate with `go run dataset/builder.go dataset/schema.go`
+- **212 examples** produced (225 max; 04_deadlock yields 1/run not 3, and one race run had 0 events)
+- All 15 programs processed, 0 errors
 
-Create branch `phase-3-dataset`, then build two files:
+---
 
-### `dataset/schema.go`
-Go structs for the JSON eval example format:
-```go
-type WeaveMetadata struct {
-    Outcome                string // "success" | "deadlock" | "race" | "leak"
-    ConcurrencyPattern     string // "channel" | "mutex" | "select" | "waitgroup" | "pipeline" | "fanout" | "fanin"
-    GoroutineCount         int
-    ExpectedNondeterminism string // "high" | "medium" | "low" | "none"
-    Description            string
-}
+## What's Next — Phase 4 Instructions
 
-type EvalExample struct {
-    ProgramID          string                   `json:"program_id"`
-    ProgramSource      string                   `json:"program_source"`
-    PartialTrace       []tracer.StateSnapshot   `json:"partial_trace"`
-    NextEvent          *tracer.StateSnapshot    `json:"next_event"`       // nil for deadlock (no trace)
-    FullOutcome        string                   `json:"full_outcome"`
-    ConcurrencyPattern string                   `json:"concurrency_pattern"`
-    GoroutineCount     int                      `json:"goroutine_count"`
-    Nondeterminism     string                   `json:"nondeterminism"`
-    RunIndex           int                      `json:"run_index"`        // which of the 5 runs
-    SplitPercent       int                      `json:"split_percent"`    // 25 | 50 | 75
-    RaceOutput         string                   `json:"race_output,omitempty"` // non-empty for race programs
-    TimedOut           bool                     `json:"timed_out"`        // true for deadlock programs
-}
-```
+Create branch `phase-4-eval`, then build `eval/zero_shot.go` (see CLAUDE.md §Phase 4).
 
-### `dataset/builder.go`
-Main logic:
-1. Walk `programs/` — glob `*.go` files in sorted order
-2. For each file, parse the `// WEAVE_META` header lines into `WeaveMetadata`
-3. Read full source into string (for `ProgramSource` field)
-4. Determine context timeout per program:
-   - `outcome: deadlock` → 500ms (short — just long enough for a few trace events before timeout)
-   - all others → 5s
-5. Run each program 5 times via `tracer.RunProgram(ctx, sourceFile, outputDir)`
-6. For each run:
-   - If `TimedOut=true` (deadlock): emit one `EvalExample` with empty `PartialTrace`, `NextEvent=nil`, `TimedOut=true`
-   - If trace file exists: call `tracer.ParseTrace(result.TraceFile)` to get `[]StateSnapshot`
-     - Skip if fewer than 4 snapshots (not enough to split)
-     - Emit 3 examples at 25%, 50%, 75% of len(snapshots):
-       - `PartialTrace` = snapshots[0:N]
-       - `NextEvent` = &snapshots[N]
-7. Write each example to `dataset/output/<program_id>_run<N>_split<P>.json`
-8. Print a summary table: program, runs completed, examples produced, any errors
+Key inputs:
+- `dataset/output/*.json` — the 212 eval examples
+- `ANTHROPIC_API_KEY` — must be set in environment
+- Model: `claude-sonnet-4-6`
 
-### Output directory
-`dataset/output/` — add to `.gitignore` (generated data, not committed)
-
-### Run it
+Run order:
 ```bash
-mkdir -p dataset/output
-go run dataset/builder.go
+go run eval/zero_shot.go     # calls Claude API, writes results to eval/results/
+python eval/analyze.py       # prints accuracy report
 ```
-Expected output: ~225 JSON files in `dataset/output/`, summary printed to stdout.
 
 ---
 
