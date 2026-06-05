@@ -114,36 +114,40 @@ Phase 4 point-prediction baseline.
 4. Computes Phase 4 one-hot baseline ECE for direct comparison (same axis)
 5. Writes per-group results to `eval/results/dist_zero_shot_results.json`
 
-**Results (gemini-3.5-flash, 42 groups):**
+**Results (gemini-3.5-flash, 42 groups) — two runs:**
 
-| Metric | Value |
-|---|---|
-| Phase 7 ECE (distribution) | 0.1833 |
-| Phase 4 ECE (one-hot baseline) | 0.2050 |
-| Delta | −0.0217 (Phase 7 is better) |
-| Mean KL(empirical ∥ predicted) | 9.50 nats |
+| Metric | Phase 4 baseline | Phase 7 no thinking | Phase 7 thinking=1024 |
+|---|---|---|---|
+| ECE | 0.2050 | 0.1833 | **0.1689** |
+| Mean KL(emp ∥ pred) | — | 9.50 nats | **7.00 nats** |
 
 Model entropy by nondeterminism level:
 
-| Level | Model H | Empirical H |
-|---|---|---|
-| high | 0.287 bits | 1.396 bits |
-| medium | 0.686 bits | 1.210 bits |
-| low | 0.042 bits | 0.903 bits |
-| none | 0.000 bits | 0.971 bits |
+| Level | No thinking | Thinking=1024 | Empirical H |
+|---|---|---|---|
+| high | 0.287 bits | **1.029 bits** | 1.396 bits |
+| medium | 0.686 bits | **0.928 bits** | 1.210 bits |
+| low | 0.042 bits | **0.399 bits** | 0.903 bits |
+| none | 0.000 bits | **0.687 bits** | 0.971 bits |
 
 **Key findings:**
 
-1. **Distribution framing marginally reduces ECE** (0.183 vs 0.205). Small but in the right direction.
-2. **Model is systematically overconfident.** Even when asked for a distribution, the model
-   outputs near-point predictions (H ≈ 0) while the empirical entropy is 0.9–1.5 bits.
-   This is the dominant failure mode and the main signal for Phase 8.
-3. **Entropy-nondeterminism correlation is partially supported.** Low/none have near-zero
-   model entropy; medium/high have higher entropy (0.69 / 0.29 bits). But high < medium
-   breaks strict monotonicity — the claim needs to be softened to: "model spreads more
-   uncertainty for programs the Phase 4 baseline also struggled on."
-4. **KL divergence is very high** (9.5 nats mean). The predicted distributions are close to
-   point masses while the empirical distributions are spread — confirms overconfidence.
+1. **Thinking budget substantially reduces overconfidence.** Without thinking, model entropy
+   is near zero (H ≈ 0 on most groups) — the model dresses up a point prediction as a
+   distribution. With thinking=1024, model entropy rises to 0.4–1.0 bits across all levels,
+   much closer to the empirical 0.9–1.4 bits.
+2. **ECE improves with thinking.** 0.169 (thinking=1024) vs 0.183 (no thinking) vs 0.205
+   (Phase 4 one-hot baseline). Thinking is the lever that converts distribution framing from
+   marginal to meaningful.
+3. **KL divergence drops from 9.5 → 7.0 nats** with thinking — distributions are closer
+   to empirical across the board.
+4. **Entropy-nondeterminism monotonicity still fails.** High (1.029) > medium (0.928)
+   now holds, but none (0.687) > low (0.399) breaks strict ordering. Only 3 "none" groups —
+   likely noise at small sample size. Softened claim: "thinking enables entropy to roughly
+   track nondeterminism level."
+5. **Root cause of residual gap:** Even with thinking=1024, model H is still 0.3–0.4 bits
+   below empirical H — the model remains partially overconfident. The gap is the training
+   signal Phase 8 quantifies.
 
 Run: `uv run python eval/dist_zero_shot.py` (requires `.env` with `GEMINI_API_KEY`)
 

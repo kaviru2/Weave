@@ -20,6 +20,7 @@ Output: eval/results/dist_zero_shot_results.json
 Run:    uv run python eval/dist_zero_shot.py
 """
 
+import argparse
 import glob
 import json
 import math
@@ -113,12 +114,12 @@ Respond ONLY in JSON with exactly these keys — no markdown fences, no text out
 # ---------------------------------------------------------------------------
 
 
-def call_gemini(client: genai.Client, model_name: str, prompt: str) -> str:
+def call_gemini(client: genai.Client, model_name: str, prompt: str, thinking_budget: int = 0) -> str:
     """Call Gemini, returning the raw response text. Retries once on failure."""
     config = genai_types.GenerateContentConfig(
         temperature=0.0,
-        max_output_tokens=256,
-        thinking_config=genai_types.ThinkingConfig(thinking_budget=0),
+        max_output_tokens=8192 if thinking_budget != 0 else 256,
+        thinking_config=genai_types.ThinkingConfig(thinking_budget=thinking_budget),
     )
     try:
         resp = client.models.generate_content(model=model_name, contents=prompt, config=config)
@@ -233,12 +234,19 @@ def load_phase4_baseline(
 # ---------------------------------------------------------------------------
 
 
-def run_eval() -> None:
+def run_eval(thinking_budget: int = 0) -> None:
     api_key = os.getenv("GEMINI_API_KEY", "")
     if not api_key:
         print("ERROR: GEMINI_API_KEY is not set", file=sys.stderr)
         sys.exit(1)
-    model_name = os.getenv("MODEL", "gemini-2.5-flash")
+    model_name = os.getenv("MODEL", "gemini-3.5-flash")
+
+    # Output to a separate file when thinking is enabled so both runs are preserved.
+    if thinking_budget != 0:
+        label = "auto" if thinking_budget == -1 else str(thinking_budget)
+        output_file = os.path.join(RESULTS_DIR, f"dist_zero_shot_thinking{label}_results.json")
+    else:
+        output_file = OUTPUT_FILE
 
     client = genai.Client(api_key=api_key)
     os.makedirs(RESULTS_DIR, exist_ok=True)
@@ -246,7 +254,8 @@ def run_eval() -> None:
     aggregated = load_aggregated()
     aggregated_by_key = {(r["program_id"], r["split_percent"]): r for r in aggregated}
     total = len(aggregated)
-    print(f"Loaded {total} aggregated groups — model: {model_name}")
+    thinking_label = f"thinking_budget={thinking_budget}" if thinking_budget != 0 else "thinking disabled"
+    print(f"Loaded {total} aggregated groups — model: {model_name} — {thinking_label}")
 
     results: list[dict[str, Any]] = []
     errors = 0
@@ -285,7 +294,7 @@ def run_eval() -> None:
         predicted: Optional[dict[str, float]] = None
 
         try:
-            raw = call_gemini(client, model_name, prompt)
+            raw = call_gemini(client, model_name, prompt, thinking_budget)
             predicted = parse_distribution(raw)
         except Exception as exc:
             error_msg = str(exc)
@@ -326,9 +335,9 @@ def run_eval() -> None:
             )
 
     # Write all results.
-    with open(OUTPUT_FILE, "w") as f:
+    with open(output_file, "w") as f:
         json.dump(results, f, indent=2)
-    print(f"\nResults written to {OUTPUT_FILE}")
+    print(f"\nResults written to {output_file}")
 
     # --- Summary ---
     scored = [r for r in results if r["ece"] is not None]
@@ -400,4 +409,13 @@ def run_eval() -> None:
 
 
 if __name__ == "__main__":
-    run_eval()
+    parser = argparse.ArgumentParser(description="Phase 7 — Distribution Zero-Shot Eval")
+    parser.add_argument(
+        "--thinking-budget",
+        type=int,
+        default=0,
+        metavar="N",
+        help="Gemini thinking budget in tokens (0=disabled, -1=auto). Default: 0",
+    )
+    args = parser.parse_args()
+    run_eval(thinking_budget=args.thinking_budget)
