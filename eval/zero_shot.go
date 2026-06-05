@@ -13,9 +13,10 @@ import (
 	"sync/atomic"
 	"time"
 
+	"weave/tracer"
+
 	"github.com/joho/godotenv"
 	"google.golang.org/genai"
-	"weave/tracer"
 )
 
 const (
@@ -79,7 +80,7 @@ func main() {
 	}
 	modelName := os.Getenv("MODEL")
 	if modelName == "" {
-		modelName = "gemini-2.5-flash"
+		modelName = "gemini-3.5-flash"
 	}
 
 	ctx := context.Background()
