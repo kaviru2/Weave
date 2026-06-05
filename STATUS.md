@@ -114,10 +114,36 @@ Phase 4 point-prediction baseline.
 4. Computes Phase 4 one-hot baseline ECE for direct comparison (same axis)
 5. Writes per-group results to `eval/results/dist_zero_shot_results.json`
 
-**Key claim being tested:** Model entropy should be monotonically higher for
-higher-nondeterminism programs. Distribution prediction should yield lower ECE than
-one-hot point predictions for high-nondeterminism programs where no single event
-dominates.
+**Results (gemini-3.5-flash, 42 groups):**
+
+| Metric | Value |
+|---|---|
+| Phase 7 ECE (distribution) | 0.1833 |
+| Phase 4 ECE (one-hot baseline) | 0.2050 |
+| Delta | −0.0217 (Phase 7 is better) |
+| Mean KL(empirical ∥ predicted) | 9.50 nats |
+
+Model entropy by nondeterminism level:
+
+| Level | Model H | Empirical H |
+|---|---|---|
+| high | 0.287 bits | 1.396 bits |
+| medium | 0.686 bits | 1.210 bits |
+| low | 0.042 bits | 0.903 bits |
+| none | 0.000 bits | 0.971 bits |
+
+**Key findings:**
+
+1. **Distribution framing marginally reduces ECE** (0.183 vs 0.205). Small but in the right direction.
+2. **Model is systematically overconfident.** Even when asked for a distribution, the model
+   outputs near-point predictions (H ≈ 0) while the empirical entropy is 0.9–1.5 bits.
+   This is the dominant failure mode and the main signal for Phase 8.
+3. **Entropy-nondeterminism correlation is partially supported.** Low/none have near-zero
+   model entropy; medium/high have higher entropy (0.69 / 0.29 bits). But high < medium
+   breaks strict monotonicity — the claim needs to be softened to: "model spreads more
+   uncertainty for programs the Phase 4 baseline also struggled on."
+4. **KL divergence is very high** (9.5 nats mean). The predicted distributions are close to
+   point masses while the empirical distributions are spread — confirms overconfidence.
 
 Run: `uv run python eval/dist_zero_shot.py` (requires `.env` with `GEMINI_API_KEY`)
 
