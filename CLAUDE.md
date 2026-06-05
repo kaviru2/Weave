@@ -11,12 +11,27 @@ improves code reasoning. But it only works for sequential Python. Nobody has don
 concurrent programs where multiple goroutines/strands run simultaneously, share channels, acquire
 locks, and produce non-deterministic interleavings.
 
-Weave's research question:
-> Can a model learn the concurrent execution state transition function — predicting how
-> goroutine/strand state evolves given a program and a partial execution trace?
+Weave's research questions:
+> 1. Can a model learn the concurrent execution state transition function — predicting how
+>    goroutine/strand state evolves given a program and a partial execution trace?
+>
+> 2. Concurrent execution is nondeterministic. Can we exploit this directly as a training
+>    signal — aggregating multiple runs of the same program into empirical next-state
+>    distributions, and training a model to predict distributions rather than point labels?
+>    Does this produce better-calibrated uncertainty and a more reliable bug-detection signal?
 
-This is a research feasibility project. We are not training a model yet. We are building the
-infrastructure to answer: **is this tractable?**
+**The paper contribution stated precisely:**
+> Current execution trace models treat concurrent programs as if they have deterministic
+> execution. They don't. We reformulate next-state prediction as distribution estimation,
+> use the natural nondeterminism of concurrent execution to derive empirical target
+> distributions from multiple runs, and show that a model trained to match these
+> distributions is better calibrated and produces more useful uncertainty estimates for
+> bug detection than point-prediction models. Nobody has done this — it is a direct
+> consequence of concurrent execution being nondeterministic.
+
+Phases 1–5 are complete. Feasibility is confirmed: existing models fail predictably
+(56% event_type accuracy, 0% deadlock/race detection zero-shot). The project now moves
+to the distribution learning phase.
 
 ---
 
@@ -31,23 +46,101 @@ infrastructure to answer: **is this tractable?**
 
 ---
 
-## Current Phase: Feasibility
+## Current Phase: Distribution Learning
 
-We need to answer four questions before anything else:
+The four feasibility questions are answered:
 
-1. **Can we collect concurrent execution traces automatically from Go programs?**
-2. **Is the concurrent state representation tractable? (Does it stay manageable in size?)**
-3. **Do existing models fail predictably on concurrent state prediction zero-shot?**
-4. **Does Ballerina's runtime expose enough trace data to be useful?**
+1. ✅ **Can we collect concurrent execution traces automatically from Go programs?** — Yes. `tracer/` works.
+2. ✅ **Is the concurrent state representation tractable?** — Yes. 212 examples, manageable JSON.
+3. ✅ **Do existing models fail predictably on concurrent state prediction zero-shot?** — Yes. 56% accuracy, 0% bug detection.
+4. **Does Ballerina's runtime expose enough trace data to be useful?** — Requires WSO2 conversation, not code.
 
-Questions 1, 2, and 3 can be answered right now with code and the laptop.
-Question 4 requires a conversation with WSO2 — not code.
+The new research direction: exploit concurrent nondeterminism as a training signal. Instead
+of treating each run as a point-labelled example, aggregate multiple runs per program to
+derive empirical next-state distributions and train to minimize KL divergence from them.
 
 ---
 
+## Completed Phases (1–5)
+
+Phases 1–5 are done and merged to main. See STATUS.md for full details.
+
+- **Phase 1** — `tracer/` — Go trace collector using `golang.org/x/exp/trace`
+- **Phase 2** — `programs/` — 15 concurrent Go programs with ASPLOS'19 provenance
+- **Phase 3** — `dataset/builder.go` — 212 eval examples (15 programs × 5 runs × 3 splits)
+- **Phase 4** — `eval/zero_shot.go` — Gemini zero-shot evaluator; results in `eval/results/`
+- **Phase 5** — `eval/analyze/analyze.go` — results analyzer; ran against 212 examples
+
 ## Your Job Right Now
 
-Build the Go trace collection and evaluation pipeline. Specifically:
+Build the distribution learning pipeline. Phases 6–8 below. Original Phase 1–5 specs are
+preserved below for reference.
+
+### Phase 6 — Dataset Aggregation
+
+Build `dataset/aggregate.py` that:
+
+1. Reads all `dataset/output/*.json` per-run examples (212 files)
+2. Groups by `(program_id, split_percent)` — "same split %" is the approximation for
+   "same trace prefix family" across runs. Acknowledge this in the paper.
+3. For each group, counts observed next-event types across the 5 runs
+4. Computes empirical distribution + Dirichlet posterior (Jeffreys prior α=0.5)
+5. Outputs `dataset/output/aggregated.json` with new schema per example:
+
+```json
+{
+  "program_id": "03_mutex_counter",
+  "split_percent": 50,
+  "concurrency_pattern": "mutex",
+  "nondeterminism": "low",
+  "full_outcome": "success",
+  "run_count": 5,
+  "next_event_distribution": {
+    "GoBlock": 0.60, "GoStart": 0.20, "GoUnblock": 0.20,
+    "GoEnd": 0.00, "GoSched": 0.00, "GoCreate": 0.00
+  },
+  "dirichlet_posterior": {
+    "GoBlock": 3.5, "GoStart": 1.5, "GoUnblock": 1.5,
+    "GoEnd": 0.5, "GoSched": 0.5, "GoCreate": 0.5
+  }
+}
+```
+
+Also: print an exploratory summary — for each group, show the distribution. Do deadlock
+programs show P(GoBlock)→1 collapse? This is the key empirical claim; check it in the data
+before building Phase 7.
+
+### Phase 7 — Distribution Zero-Shot Eval
+
+Build `eval/dist_zero_shot.py` that:
+
+1. Uses the aggregated dataset from Phase 6
+2. Prompts the model for a probability distribution (not a point prediction):
+
+```
+Predict the DISTRIBUTION over next scheduler events (probabilities must sum to 1.0).
+Respond in JSON:
+{"GoBlock": p, "GoCreate": p, "GoEnd": p, "GoSched": p, "GoStart": p, "GoUnblock": p}
+```
+
+3. Measures Expected Calibration Error (ECE) against empirical distributions
+4. Also measures: does model entropy correlate with program nondeterminism level?
+5. Compare ECE to Phase 4 point-prediction baseline
+
+### Phase 8 — Dirichlet-Categorical Analysis
+
+Build `eval/dirichlet_analysis.py` that:
+
+1. Computes anomaly scores: `KL(predicted_dist || uniform)` — high = confident, low = uncertain
+2. Shows deadlock distribution collapse: P(GoBlock)→1, P(GoUnblock)→0 as trace progresses
+3. Produces the three key results for the paper:
+   - Lower ECE for distribution predictions vs. point-prediction baseline
+   - High-entropy model predictions correlate with high-nondeterminism programs
+   - Deadlock programs have detectable distribution signatures from partial traces
+
+---
+
+## Original Phase Specifications (1–5, for reference)
 
 ### Phase 1 — Go Trace Collector
 
@@ -227,12 +320,16 @@ weave/
     01_simple_channel.go
     ... (15 programs)
   dataset/
-    builder.go                 ← runs programs, builds eval dataset
+    builder.go                 ← Phase 3: runs programs, builds per-run eval dataset
     schema.go                  ← dataset JSON schema types
+    aggregate.py               ← Phase 6: aggregates runs into empirical distributions
     output/                    ← generated dataset files go here (gitignore)
   eval/
-    zero_shot.go               ← calls Claude API, records predictions
-    analyze.py                 ← analysis and metrics
+    zero_shot.go               ← Phase 4: point-prediction zero-shot eval (Gemini)
+    analyze/
+      analyze.go               ← Phase 5: results analyzer
+    dist_zero_shot.py          ← Phase 7: distribution zero-shot eval
+    dirichlet_analysis.py      ← Phase 8: Dirichlet-Categorical analysis
     results/                   ← eval output files (gitignore)
   go.mod
   go.sum
@@ -262,22 +359,30 @@ weave/
 
 ---
 
-## Definition of Done for This Phase
-
-We are done with this phase when we can run:
+## Definition of Done — Phases 1–5 (complete)
 
 ```bash
-go run dataset/builder.go        # builds ~225 eval examples
-go run eval/zero_shot.go         # runs zero-shot eval against Claude API
-python eval/analyze.py           # prints accuracy report
+go run dataset/builder.go              # 212 eval examples
+go run eval/zero_shot.go               # zero-shot eval, results in eval/results/
+go run eval/analyze/analyze.go         # prints accuracy report
 ```
 
-And we have a clear answer to:
-- What % of next-event predictions does Claude get right zero-shot?
-- Where does it fail? (which patterns, which event types)
-- Are deadlocks/races detectable from partial traces?
+Results: 56% event_type accuracy, 0% deadlock/race detection. Feasibility confirmed.
 
-That data is the foundation of the research proposal.
+## Definition of Done — Phases 6–8
+
+```bash
+python dataset/aggregate.py            # aggregated.json with empirical distributions
+python eval/dist_zero_shot.py          # ECE vs empirical distributions
+python eval/dirichlet_analysis.py      # anomaly scores, deadlock signatures
+```
+
+We are done when we have clear answers to:
+- Does deadlock produce a detectable distribution collapse (P(GoBlock)→1) in the empirical data?
+- Does asking the model for a distribution reduce ECE compared to point-prediction calibration?
+- Does model entropy correlate with program nondeterminism level?
+
+That's the data for the WSO2 research proposal and the paper's core claim.
 
 ---
 

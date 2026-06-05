@@ -1,3 +1,19 @@
+# Generated data — regenerate with builder.go / aggregate.py
 dataset/output/
 eval/results/
+
+# Secrets
 .env
+
+# Python environment (uv-managed)
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# uv lockfile — commit this if you want reproducible installs across machines
+# uv.lock
+
+# Go build artifacts
+*.test
+/tmp/

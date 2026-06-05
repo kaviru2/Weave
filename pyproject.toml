@@ -1,0 +1,18 @@
+[project]
+name = "weave"
+version = "0.1.0"
+description = "Concurrent Code World Models — distribution learning pipeline (Phases 6–8)"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    # Phase 7 — Gemini API (same provider as Phase 4 Go eval)
+    "google-genai>=1.0.0",
+    # Phases 6–8 — numerical computation, KL divergence, Dirichlet
+    "numpy>=2.0.0",
+    "scipy>=1.14.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+]
