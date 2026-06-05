@@ -51,8 +51,8 @@ weave/
 | 3 — Dataset Builder | ✅ done | 212 eval examples (15 programs × 5 runs × 3 splits) |
 | 4 — Zero-shot Eval | ✅ done | Gemini point-prediction baseline |
 | 5 — Results Analysis | ✅ done | 56% accuracy, 0% bug detection |
-| 6 — Dataset Aggregation | 🔄 in progress | Empirical next-event distributions |
-| 7 — Distribution Eval | ⬜ planned | ECE vs point-prediction baseline |
+| 6 — Dataset Aggregation | ✅ done | Empirical next-event distributions; entropy stratifies by nondeterminism |
+| 7 — Distribution Eval | ✅ done | ECE vs point-prediction baseline |
 | 8 — Dirichlet Analysis | ⬜ planned | Anomaly scores, deadlock signatures |
 
 ## Getting Started

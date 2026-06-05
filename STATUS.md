@@ -3,7 +3,7 @@
 > Read this first when picking up on a new machine. Then read CLAUDE.md for the full plan.
 
 ## Current Phase
-**Phase 7 — Distribution Zero-Shot Eval** (start here)
+**Phase 8 — Dirichlet-Categorical Analysis** (start here)
 
 ## Phase Checklist
 
@@ -12,8 +12,8 @@
 - [x] Phase 3 — Trace Dataset Builder (`dataset/builder.go`, `schema.go`) — **merged to main**
 - [x] Phase 4 — Zero-shot Evaluator (`eval/zero_shot.go`) — **merged to main**
 - [x] Phase 5 — Results Analysis (`eval/analyze/analyze.go`) — **merged to main**
-- [x] Phase 6 — Dataset Aggregation (`dataset/aggregate.py`) — **on branch phase-6-aggregation**
-- [ ] Phase 7 — Distribution Zero-Shot Eval (`eval/dist_zero_shot.py`)
+- [x] Phase 6 — Dataset Aggregation (`dataset/aggregate.py`) — **merged to main**
+- [x] Phase 7 — Distribution Zero-Shot Eval (`eval/dist_zero_shot.py`) — **on branch phase-7-dist-eval**
 - [ ] Phase 8 — Dirichlet-Categorical Analysis (`eval/dirichlet_analysis.py`)
 
 ---
@@ -94,6 +94,32 @@ stated. Note this limitation explicitly in the paper.
 **Python environment:** `pyproject.toml` + `uv` added. Run with `uv run python dataset/aggregate.py`.
 
 Run: `uv run python dataset/aggregate.py` (requires `dataset/output/` populated by Phase 3)
+
+---
+
+### Phase 7 — Distribution Zero-Shot Eval ✓
+
+`eval/dist_zero_shot.py` evaluates model calibration on distribution prediction vs the
+Phase 4 point-prediction baseline.
+
+**What it does:**
+
+1. Loads 42 aggregated groups from `dataset/output/aggregated.json` (Phase 6 output)
+2. For each group, picks a representative partial trace (run_index=0) and prompts Gemini
+   for a probability distribution over the 6 next-event types
+3. Scores against empirical distributions using:
+   - **ECE** — mean |predicted[et] - empirical[et]| per event type
+   - **KL divergence** — KL(empirical || predicted) in nats
+   - **Model entropy** — H(predicted); should correlate with program nondeterminism
+4. Computes Phase 4 one-hot baseline ECE for direct comparison (same axis)
+5. Writes per-group results to `eval/results/dist_zero_shot_results.json`
+
+**Key claim being tested:** Model entropy should be monotonically higher for
+higher-nondeterminism programs. Distribution prediction should yield lower ECE than
+one-hot point predictions for high-nondeterminism programs where no single event
+dominates.
+
+Run: `uv run python eval/dist_zero_shot.py` (requires `.env` with `GEMINI_API_KEY`)
 
 ---
 
