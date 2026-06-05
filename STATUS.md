@@ -3,7 +3,7 @@
 > Read this first when picking up on a new machine. Then read CLAUDE.md for the full plan.
 
 ## Current Phase
-**Phase 8 — Dirichlet-Categorical Analysis** (start here)
+**All phases complete.** Ready for WSO2 research proposal.
 
 ## Phase Checklist
 
@@ -13,8 +13,8 @@
 - [x] Phase 4 — Zero-shot Evaluator (`eval/zero_shot.go`) — **merged to main**
 - [x] Phase 5 — Results Analysis (`eval/analyze/analyze.go`) — **merged to main**
 - [x] Phase 6 — Dataset Aggregation (`dataset/aggregate.py`) — **merged to main**
-- [x] Phase 7 — Distribution Zero-Shot Eval (`eval/dist_zero_shot.py`) — **on branch phase-7-dist-eval**
-- [ ] Phase 8 — Dirichlet-Categorical Analysis (`eval/dirichlet_analysis.py`)
+- [x] Phase 7 — Distribution Zero-Shot Eval (`eval/dist_zero_shot.py`) — **merged to main**
+- [x] Phase 8 — Dirichlet-Categorical Analysis (`eval/dirichlet_analysis.py`) — **complete**
 
 ---
 
@@ -150,6 +150,80 @@ Model entropy by nondeterminism level:
    signal Phase 8 quantifies.
 
 Run: `uv run python eval/dist_zero_shot.py` (requires `.env` with `GEMINI_API_KEY`)
+
+---
+
+### Phase 8 — Dirichlet-Categorical Analysis ✓
+
+`eval/dirichlet_analysis.py` computes anomaly scores, leak/deadlock distribution signatures,
+entropy-vs-trace-depth curves, and the three key paper findings. No API calls — pure analysis
+of existing Phase 6 and Phase 7 result files.
+
+**Three key paper findings confirmed:**
+
+**Finding 1 — Distribution framing reduces calibration error (17.6% improvement):**
+
+| Condition | ECE |
+|---|---|
+| Phase 4 point-prediction baseline | 0.2050 |
+| Phase 7 distribution, no thinking | 0.1833 |
+| Phase 7 distribution, thinking=1024 | **0.1689** |
+
+**Finding 2 — Model entropy tracks nondeterminism level (Spearman rho=0.412, p=0.007):**
+
+With thinking=1024, model entropy is significantly positively correlated with nondeterminism
+rank (none < low < medium < high). Moderate-to-strong effect. Claim SUPPORTED.
+
+**Finding 3 — Anomaly scores as unsupervised bug signal (weak, not significant):**
+
+`KL(predicted || uniform)` scores success vs buggy programs: mean 1.342 vs 1.182.
+Cohen's d=0.294 (small effect), p=0.503 — not statistically significant. The anomaly score
+does not cleanly separate buggy from correct programs at this dataset scale (n=9 buggy groups).
+
+**Additional findings:**
+
+**Distribution signature — P(GoUnblock)=0 is a clean goroutine-leak detector:**
+
+| Outcome | split=25% | split=50% | split=75% |
+|---|---|---|---|
+| success | P(GoUnblock)=0.145 | 0.182 | 0.164 |
+| leak (06, 14) | P(GoUnblock)=**0.000** | **0.000** | **0.000** |
+| race (05) | P(GoUnblock)=**0.000** | **0.000** | **0.000** |
+
+Leak programs (06_channel_select, 14_goroutine_leak): P(GoUnblock)=0 is causally motivated.
+The leaked goroutine is permanently blocked on a channel that will never be signalled —
+GoUnblock is structurally impossible at any trace depth. Zero false positives vs success programs.
+
+Race program (05_race_condition): P(GoUnblock)=0 is a trace-structure confound, not a
+consequence of the race. The bug (concurrent map writes) uses no blocking/unblocking
+primitives. The WaitGroup unblock fires at the very end of a short trace, falling outside
+all three split windows. These are different mechanisms and must be stated separately in
+the paper. The headline finding is scoped to goroutine leaks.
+
+**Entropy decreases monotonically as trace deepens (rho=-0.314, p=0.043):**
+
+| Trace depth | Mean model entropy (bits) | Mean empirical entropy (bits) |
+|---|---|---|
+| 25% | 0.941 | 1.099 |
+| 50% | 0.709 | 1.113 |
+| 75% | 0.445 | 1.051 |
+
+Model grows more confident as it sees more trace history — a statistically significant effect.
+Empirical entropy is stable (~1.1 bits) across depths, showing the model's confidence gain
+is from reasoning over trace context, not a property of the programs at that depth.
+
+**Limitations documented:**
+- P(GoUnblock)=0 signature is causally motivated for leak programs; the race program's
+  P(GoUnblock)=0 is a confound (no blocking primitives in the bug path + short trace) —
+  do not conflate the two mechanisms in the paper
+- Anomaly detection (Finding 3) is underpowered at n=9 buggy groups — revisit with more programs
+- Deadlock programs (04_deadlock) produce no trace at all (TimedOut=true), so the collapse
+  claim is P(GoUnblock)=0 in leak programs, not P(GoBlock)→1 in deadlock programs
+- Entropy-nondeterminism ordering (none < low < medium < high) holds in mean but breaks for
+  "none" vs "low" at specific depths — likely noise at n=3 "none" groups
+
+Run: `uv run python eval/dirichlet_analysis.py`
+Output: `eval/results/dirichlet_analysis.json`
 
 ---
 
