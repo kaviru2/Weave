@@ -182,16 +182,23 @@ does not cleanly separate buggy from correct programs at this dataset scale (n=9
 
 **Additional findings:**
 
-**Distribution signature — P(GoUnblock)=0 for all leak and race programs at all trace depths:**
+**Distribution signature — P(GoUnblock)=0 is a clean goroutine-leak detector:**
 
 | Outcome | split=25% | split=50% | split=75% |
 |---|---|---|---|
 | success | P(GoUnblock)=0.145 | 0.182 | 0.164 |
-| leak | P(GoUnblock)=**0.000** | **0.000** | **0.000** |
-| race | P(GoUnblock)=**0.000** | **0.000** | **0.000** |
+| leak (06, 14) | P(GoUnblock)=**0.000** | **0.000** | **0.000** |
+| race (05) | P(GoUnblock)=**0.000** | **0.000** | **0.000** |
 
-P(GoUnblock)=0 is a clean, consistent distributional signature for leak and race programs.
-This holds across all 9 (program_id, split_percent) groups with non-success outcomes.
+Leak programs (06_channel_select, 14_goroutine_leak): P(GoUnblock)=0 is causally motivated.
+The leaked goroutine is permanently blocked on a channel that will never be signalled —
+GoUnblock is structurally impossible at any trace depth. Zero false positives vs success programs.
+
+Race program (05_race_condition): P(GoUnblock)=0 is a trace-structure confound, not a
+consequence of the race. The bug (concurrent map writes) uses no blocking/unblocking
+primitives. The WaitGroup unblock fires at the very end of a short trace, falling outside
+all three split windows. These are different mechanisms and must be stated separately in
+the paper. The headline finding is scoped to goroutine leaks.
 
 **Entropy decreases monotonically as trace deepens (rho=-0.314, p=0.043):**
 
@@ -206,9 +213,12 @@ Empirical entropy is stable (~1.1 bits) across depths, showing the model's confi
 is from reasoning over trace context, not a property of the programs at that depth.
 
 **Limitations documented:**
+- P(GoUnblock)=0 signature is causally motivated for leak programs; the race program's
+  P(GoUnblock)=0 is a confound (no blocking primitives in the bug path + short trace) —
+  do not conflate the two mechanisms in the paper
 - Anomaly detection (Finding 3) is underpowered at n=9 buggy groups — revisit with more programs
 - Deadlock programs (04_deadlock) produce no trace at all (TimedOut=true), so the collapse
-  claim is P(GoUnblock)=0 in leak/race programs, not P(GoBlock)→1 in deadlock programs
+  claim is P(GoUnblock)=0 in leak programs, not P(GoBlock)→1 in deadlock programs
 - Entropy-nondeterminism ordering (none < low < medium < high) holds in mean but breaks for
   "none" vs "low" at specific depths — likely noise at n=3 "none" groups
 

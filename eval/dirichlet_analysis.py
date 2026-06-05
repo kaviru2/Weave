@@ -178,8 +178,13 @@ def analysis_leak_signature(
 ) -> dict[str, Any]:
     """P(GoBlock) and P(GoUnblock) in empirical distributions, by outcome × split_percent.
 
-    Checks the reframed collapse claim: leak programs show P(GoUnblock)=0 consistently,
-    and P(GoBlock) trends higher vs success programs.
+    Leak programs (06_channel_select, 14_goroutine_leak): P(GoUnblock)=0 is causally
+    motivated — the leaked goroutine is permanently blocked on a channel with no receiver,
+    making GoUnblock structurally impossible.
+
+    Race program (05_race_condition): P(GoUnblock)=0 is a trace-structure confound. The
+    bug (concurrent map writes) uses no blocking/unblocking primitives; the WaitGroup
+    unblock falls outside all split windows due to the short trace. Different mechanism.
     """
     # Collect per-record values: {outcome: {split_percent: [P(GoBlock), ...]}}
     goblock_by: dict[str, dict[int, list[float]]] = defaultdict(lambda: defaultdict(list))
@@ -484,6 +489,13 @@ def print_leak_signature(sig: dict[str, Any]) -> None:
                 f"    split={sp:3d}%  P(GoBlock)={entry['mean_P_GoBlock']:.3f}  "
                 f"P(GoUnblock)={entry['mean_P_GoUnblock']:.3f}  {unblock_str}  n={entry['n']}"
             )
+
+    print()
+    print("  NOTE on race program (05_race_condition):")
+    print("    P(GoUnblock)=0 is a trace-structure confound, not caused by the race.")
+    print("    The bug uses no blocking/unblocking primitives; the WaitGroup unblock")
+    print("    falls outside all split windows due to the short trace length.")
+    print("    The causally-motivated P(GoUnblock)=0 signature applies to LEAK programs.")
 
     print("\n  Spearman rho (split_percent vs P(GoBlock)):")
     for group, result in sorted(sig["spearman_depth_vs_goblock"].items()):
