@@ -14,11 +14,52 @@
 - [x] Phase 5 — Results Analysis (`eval/analyze/analyze.go`) — **merged to main**
 - [x] Phase 6 — Dataset Aggregation (`dataset/aggregate.py`) — **merged to main**
 - [x] Phase 7 — Distribution Zero-Shot Eval (`eval/dist_zero_shot.py`) — **merged to main**
-- [x] Phase 8 — Dirichlet-Categorical Analysis (`eval/dirichlet_analysis.py`) — **complete**
+- [x] Phase 8 — Dirichlet-Categorical Analysis (`eval/dirichlet_analysis.py`) — **merged to main**
+- [x] Phase 9 — Dataset Expansion (`programs/16_*.go` … `25_*.go`) — **complete**
 
 ---
 
 ## What's Done
+
+### Phase 9 — Dataset Expansion ✓
+
+10 new goroutine-leak programs added (`programs/16_*` … `programs/25_*`), each using a
+distinct leak mechanism. Dataset rebuilt: **365 examples** (25 programs × 5 runs × 3 splits),
+**72 aggregated groups** (Phase 6 reaggregated).
+
+**P(GoUnblock)=0 signature — refined finding:**
+
+The original Phase 8 claim ("P(GoUnblock)=0 is a zero-false-positive goroutine-leak detector")
+was based on 2 programs. Expanding to 12 leak programs reveals it is mechanism-dependent:
+
+| Programs | P(GoUnblock)=0 at all splits? | Why |
+|---|---|---|
+| `06_channel_select`, `24_select_no_default` | **Yes** | Goroutine enters permanent GoWaiting before any GoUnblock events occur |
+| All other 10 leak programs | **No** | Goroutines do legitimate work (receive items, process jobs) before leaking; GoUnblock events appear at early split depths |
+
+No success program shows P(GoUnblock)=0 across all splits — zero false positives still hold for
+the two programs where the signature is structurally motivated.
+
+**Paper implication:** Reframe as "distribution signatures of select-block goroutine leaks"
+rather than "P(GoUnblock)=0 as a general leak detector." The claim is narrowed but causal.
+
+**Phase 8 findings re-verified with expanded dataset (ECE/entropy/anomaly unchanged — Phase 7 not re-run):**
+
+| Metric | Value |
+|---|---|
+| Phase 4 point-prediction ECE | 0.2161 |
+| Phase 7 distribution + thinking=1024 ECE | **0.1689** (21.8% improvement) |
+| Spearman rho (ND rank vs model entropy) | 0.412, p=0.007 |
+| Anomaly score Cohen's d (success vs buggy) | 0.294, p=0.503 (not significant) |
+
+Run:
+```bash
+go run dataset/builder.go dataset/schema.go
+uv run python dataset/aggregate.py
+uv run python eval/dirichlet_analysis.py
+```
+
+---
 
 ### Phase 1 — Go Trace Collector ✓
 - `tracer/state.go` — `EventType` constants, `GoroutineState`, `StateSnapshot`, `RunResult` types

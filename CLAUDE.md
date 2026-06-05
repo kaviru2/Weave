@@ -29,9 +29,8 @@ Weave's research questions:
 > bug detection than point-prediction models. Nobody has done this — it is a direct
 > consequence of concurrent execution being nondeterministic.
 
-Phases 1–5 are complete. Feasibility is confirmed: existing models fail predictably
-(56% event_type accuracy, 0% deadlock/race detection zero-shot). The project now moves
-to the distribution learning phase.
+Phases 1–9 are complete. Feasibility is confirmed, distribution learning is evaluated,
+and the leak corpus has been expanded to 25 programs for the WSO2 research proposal.
 
 ---
 
@@ -61,20 +60,24 @@ derive empirical next-state distributions and train to minimize KL divergence fr
 
 ---
 
-## Completed Phases (1–5)
+## Completed Phases (1–9)
 
-Phases 1–5 are done and merged to main. See STATUS.md for full details.
+All phases done and merged to main. See STATUS.md for full details.
 
 - **Phase 1** — `tracer/` — Go trace collector using `golang.org/x/exp/trace`
 - **Phase 2** — `programs/` — 15 concurrent Go programs with ASPLOS'19 provenance
-- **Phase 3** — `dataset/builder.go` — 212 eval examples (15 programs × 5 runs × 3 splits)
+- **Phase 3** — `dataset/builder.go` — 365 eval examples (25 programs × 5 runs × 3 splits)
 - **Phase 4** — `eval/zero_shot.go` — Gemini zero-shot evaluator; results in `eval/results/`
-- **Phase 5** — `eval/analyze/analyze.go` — results analyzer; ran against 212 examples
+- **Phase 5** — `eval/analyze/analyze.go` — results analyzer
+- **Phase 6** — `dataset/aggregate.py` — 72 aggregated groups with empirical distributions
+- **Phase 7** — `eval/dist_zero_shot.py` — distribution zero-shot eval (ECE, entropy)
+- **Phase 8** — `eval/dirichlet_analysis.py` — Dirichlet-Categorical analysis
+- **Phase 9** — `programs/16–25` — 10 new leak programs; dataset expanded to 25 programs
 
 ## Your Job Right Now
 
-Build the distribution learning pipeline. Phases 6–8 below. Original Phase 1–5 specs are
-preserved below for reference.
+The pipeline is complete. WSO2 research proposal is the next step.
+Original Phase specs preserved below for reference.
 
 ### Phase 6 — Dataset Aggregation
 
@@ -137,6 +140,44 @@ Build `eval/dirichlet_analysis.py` that:
    - Lower ECE for distribution predictions vs. point-prediction baseline
    - High-entropy model predictions correlate with high-nondeterminism programs
    - Deadlock programs have detectable distribution signatures from partial traces
+
+### Phase 9 — Dataset Expansion
+
+**Goal:** Expand the leak corpus from 2 → 12 programs to stress-test the P(GoUnblock)=0
+distribution signature claim before the WSO2 research proposal.
+
+Add 10 new `programs/*.go` files, all `outcome: leak`, each using a different leak mechanism:
+
+| File | Leak mechanism | Pattern | Goroutines |
+|---|---|---|---|
+| `16_http_handler_leak.go` | Handler goroutines range over requests channel; main never closes | channel | 3 |
+| `17_ticker_leak.go` | Goroutine reads `time.NewTicker.C`; main exits without `ticker.Stop()` | channel | 2 |
+| `18_worker_no_close.go` | 3 workers range over jobs channel; main never closes | channel | 4 |
+| `19_context_ignore.go` | Goroutine ignores `ctx.Done()`, blocks on work channel; main cancels + exits | channel | 2 |
+| `20_event_listener_leak.go` | Subscriber goroutine ranges over events channel; publisher exits without close | channel | 2 |
+| `21_done_channel_leak.go` | Goroutine blocks on `<-done`; main never sends/closes | channel | 2 |
+| `22_mutex_deadwait.go` | Main holds mutex lock; worker goroutine blocks on `Lock()`; main exits | mutex | 2 |
+| `23_pipeline_no_drain.go` | Stage1 blocks on send to unbuffered channel; stage2 exits after one item | pipeline | 3 |
+| `24_select_no_default.go` | Goroutine blocked in select with two cases; neither channel ever receives | select | 2 |
+| `25_goroutine_per_request.go` | 5 goroutines each block on their own response channel; main never responds | channel | 6 |
+
+Run sequence:
+```bash
+go run dataset/builder.go dataset/schema.go  # 365 examples
+uv run python dataset/aggregate.py            # 72 groups
+uv run python eval/dirichlet_analysis.py      # updated findings
+```
+
+**Key finding (Phase 9):** P(GoUnblock)=0 across ALL splits holds only for programs where
+the goroutine enters a permanently blocked state before any GoUnblock events appear in the
+trace window — specifically `06_channel_select` and `24_select_no_default`. For programs
+where goroutines do legitimate work before leaking (receiving items, processing requests),
+GoUnblock events appear at early split depths and P(GoUnblock)>0. The signature is
+mechanism-dependent, not a general zero-false-positive detector.
+
+**Paper implication:** Reframe as "distribution signatures of specific goroutine-leak
+mechanisms" rather than "P(GoUnblock)=0 as a general leak detector." The select-block leak
+pattern is the cleanest signal; other mechanisms require deeper trace depths.
 
 ---
 
