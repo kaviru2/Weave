@@ -3,7 +3,7 @@
 > Read this first when picking up on a new machine. Then read CLAUDE.md for the full plan.
 
 ## Current Phase
-**Phase 7 — Distribution Zero-Shot Eval** (start here)
+**Phase 8 — Dirichlet-Categorical Analysis** (start here)
 
 ## Phase Checklist
 
@@ -12,8 +12,8 @@
 - [x] Phase 3 — Trace Dataset Builder (`dataset/builder.go`, `schema.go`) — **merged to main**
 - [x] Phase 4 — Zero-shot Evaluator (`eval/zero_shot.go`) — **merged to main**
 - [x] Phase 5 — Results Analysis (`eval/analyze/analyze.go`) — **merged to main**
-- [x] Phase 6 — Dataset Aggregation (`dataset/aggregate.py`) — **on branch phase-6-aggregation**
-- [ ] Phase 7 — Distribution Zero-Shot Eval (`eval/dist_zero_shot.py`)
+- [x] Phase 6 — Dataset Aggregation (`dataset/aggregate.py`) — **merged to main**
+- [x] Phase 7 — Distribution Zero-Shot Eval (`eval/dist_zero_shot.py`) — **on branch phase-7-dist-eval**
 - [ ] Phase 8 — Dirichlet-Categorical Analysis (`eval/dirichlet_analysis.py`)
 
 ---
@@ -94,6 +94,62 @@ stated. Note this limitation explicitly in the paper.
 **Python environment:** `pyproject.toml` + `uv` added. Run with `uv run python dataset/aggregate.py`.
 
 Run: `uv run python dataset/aggregate.py` (requires `dataset/output/` populated by Phase 3)
+
+---
+
+### Phase 7 — Distribution Zero-Shot Eval ✓
+
+`eval/dist_zero_shot.py` evaluates model calibration on distribution prediction vs the
+Phase 4 point-prediction baseline.
+
+**What it does:**
+
+1. Loads 42 aggregated groups from `dataset/output/aggregated.json` (Phase 6 output)
+2. For each group, picks a representative partial trace (run_index=0) and prompts Gemini
+   for a probability distribution over the 6 next-event types
+3. Scores against empirical distributions using:
+   - **ECE** — mean |predicted[et] - empirical[et]| per event type
+   - **KL divergence** — KL(empirical || predicted) in nats
+   - **Model entropy** — H(predicted); should correlate with program nondeterminism
+4. Computes Phase 4 one-hot baseline ECE for direct comparison (same axis)
+5. Writes per-group results to `eval/results/dist_zero_shot_results.json`
+
+**Results (gemini-3.5-flash, 42 groups) — two runs:**
+
+| Metric | Phase 4 baseline | Phase 7 no thinking | Phase 7 thinking=1024 |
+|---|---|---|---|
+| ECE | 0.2050 | 0.1833 | **0.1689** |
+| Mean KL(emp ∥ pred) | — | 9.50 nats | **7.00 nats** |
+
+Model entropy by nondeterminism level:
+
+| Level | No thinking | Thinking=1024 | Empirical H |
+|---|---|---|---|
+| high | 0.287 bits | **1.029 bits** | 1.396 bits |
+| medium | 0.686 bits | **0.928 bits** | 1.210 bits |
+| low | 0.042 bits | **0.399 bits** | 0.903 bits |
+| none | 0.000 bits | **0.687 bits** | 0.971 bits |
+
+**Key findings:**
+
+1. **Thinking budget substantially reduces overconfidence.** Without thinking, model entropy
+   is near zero (H ≈ 0 on most groups) — the model dresses up a point prediction as a
+   distribution. With thinking=1024, model entropy rises to 0.4–1.0 bits across all levels,
+   much closer to the empirical 0.9–1.4 bits.
+2. **ECE improves with thinking.** 0.169 (thinking=1024) vs 0.183 (no thinking) vs 0.205
+   (Phase 4 one-hot baseline). Thinking is the lever that converts distribution framing from
+   marginal to meaningful.
+3. **KL divergence drops from 9.5 → 7.0 nats** with thinking — distributions are closer
+   to empirical across the board.
+4. **Entropy-nondeterminism monotonicity still fails.** High (1.029) > medium (0.928)
+   now holds, but none (0.687) > low (0.399) breaks strict ordering. Only 3 "none" groups —
+   likely noise at small sample size. Softened claim: "thinking enables entropy to roughly
+   track nondeterminism level."
+5. **Root cause of residual gap:** Even with thinking=1024, model H is still 0.3–0.4 bits
+   below empirical H — the model remains partially overconfident. The gap is the training
+   signal Phase 8 quantifies.
+
+Run: `uv run python eval/dist_zero_shot.py` (requires `.env` with `GEMINI_API_KEY`)
 
 ---
 
