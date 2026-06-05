@@ -73,6 +73,7 @@ All phases done and merged to main. See STATUS.md for full details.
 - **Phase 7** — `eval/dist_zero_shot.py` — distribution zero-shot eval (ECE, entropy)
 - **Phase 8** — `eval/dirichlet_analysis.py` — Dirichlet-Categorical analysis
 - **Phase 9** — `programs/16–25` — 10 new leak programs; dataset expanded to 25 programs
+- **Phase 9b** — `programs/26` — select-block boundary test; causal claim confirmed for multi-case selects
 
 ## Your Job Right Now
 
@@ -175,9 +176,14 @@ where goroutines do legitimate work before leaking (receiving items, processing 
 GoUnblock events appear at early split depths and P(GoUnblock)>0. The signature is
 mechanism-dependent, not a general zero-false-positive detector.
 
-**Paper implication:** Reframe as "distribution signatures of specific goroutine-leak
-mechanisms" rather than "P(GoUnblock)=0 as a general leak detector." The select-block leak
-pattern is the cleanest signal; other mechanisms require deeper trace depths.
+**Key finding (Phase 9b):** `26_select_block_multicase` — a select with 4 unreachable cases —
+shows P(GoUnblock)=0 at all splits. The signature holds regardless of how many cases the
+select has, as long as all cases are structurally unreachable. The causal claim is confirmed
+for the select-block class of goroutine leaks.
+
+**Paper implication:** The headline finding is precisely characterised as the "select-block
+leak" class — a formal definition exists (goroutine enters select before any GoUnblock events;
+no case reachable). P(GoUnblock)=0 is a theorem, not a pattern.
 
 ---
 

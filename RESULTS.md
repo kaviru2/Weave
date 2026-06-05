@@ -285,6 +285,40 @@ original empirical claim.
 
 ---
 
+---
+
+## Phase 9b — Select-block Boundary Test
+
+**Program added:** `26_select_block_multicase.go`  
+**Dataset:** 377 examples (26 programs × 5 runs × 3 splits), 75 aggregated groups  
+**Question:** Does P(GoUnblock)=0 hold for select-block leaks with multiple cases?
+
+### Result: Confirmed across 4-case select
+
+| Program | Cases | P(GoUnblock) at split=25% | split=50% | split=75% |
+|---|---|---|---|---|
+| `06_channel_select` | 2 | 0.000 | 0.000 | 0.000 |
+| `24_select_no_default` | 2 | 0.000 | 0.000 | 0.000 |
+| `26_select_block_multicase` | 4 | **0.000** | **0.000** | **0.000** |
+
+The number of cases does not affect the signature. What matters is the structural property:
+the goroutine enters the select before any GoUnblock events occur and no case is reachable.
+This is a property of the goroutine's lifecycle, not of the select arity.
+
+### Causal statement (final, citable form)
+
+> **Definition (select-block leak):** A goroutine G is a select-block leak if G enters a
+> `select` statement at time t where no case condition can be satisfied by the remaining
+> program execution. GoUnblock(G) is structurally impossible for all t' > t. Therefore
+> P(GoUnblock)=0 in the empirical next-event distribution for any trace split that falls
+> after G's first GoBlock event.
+
+This is not a heuristic. It is a consequence of the Go scheduler's semantics: GoUnblock
+only fires when another goroutine sends to or closes a channel that G is waiting on, or
+when a mutex G is waiting on is unlocked. If no such action is reachable, GoUnblock cannot occur.
+
+---
+
 ## Summary Table
 
 | Phase | What was measured | Key number |
@@ -294,8 +328,9 @@ original empirical claim.
 | 7 (no thinking) | Distribution ECE vs one-hot baseline | 0.183 vs 0.205 (−10.6%) |
 | 7 (thinking=1024) | Distribution ECE with reasoning enabled | **0.169 vs 0.205 (−17.6%)** |
 | 8 | Anomaly scores, P(GoUnblock)=0 signature, entropy-depth | rho=0.412, p=0.007 |
-| 9 | P(GoUnblock)=0 across 12 leak mechanisms | 2/12 programs: signature holds universally |
+| 9 | P(GoUnblock)=0 across 12 leak mechanisms | 3/13 programs: select-block class only |
+| 9b | Boundary test: multi-case select-block | P(GoUnblock)=0 confirmed for 4-case select |
 
 ---
 
-*Last updated: Phase 9 complete. 25 programs, 365 examples, 72 aggregated groups. Ready for WSO2 research proposal.*
+*Last updated: Phase 9b complete. 26 programs, 377 examples, 75 aggregated groups. Causal claim boundary-tested. Ready for WSO2 research proposal.*

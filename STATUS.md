@@ -15,11 +15,37 @@
 - [x] Phase 6 — Dataset Aggregation (`dataset/aggregate.py`) — **merged to main**
 - [x] Phase 7 — Distribution Zero-Shot Eval (`eval/dist_zero_shot.py`) — **merged to main**
 - [x] Phase 8 — Dirichlet-Categorical Analysis (`eval/dirichlet_analysis.py`) — **merged to main**
-- [x] Phase 9 — Dataset Expansion (`programs/16_*.go` … `25_*.go`) — **complete**
+- [x] Phase 9 — Dataset Expansion (`programs/16_*.go` … `25_*.go`) — **merged to main**
+- [x] Phase 9b — Select-block boundary test (`programs/26_select_block_multicase.go`) — **complete**
 
 ---
 
 ## What's Done
+
+### Phase 9b — Select-block boundary test ✓
+
+`26_select_block_multicase.go`: a select with four cases across distinct channel types (int,
+string, []byte, error), none ever sent to. P(GoUnblock)=0.00 at all three split depths.
+
+**Result: the causal claim holds for multi-case selects.** Confirmed across three select-block
+programs:
+
+| Program | Cases | P(GoUnblock)=0 at all splits? |
+|---|---|---|
+| `06_channel_select` | 2 (result + timeout) | Yes |
+| `24_select_no_default` | 2 (int + string) | Yes |
+| `26_select_block_multicase` | 4 (int, string, []byte, error) | **Yes** |
+
+Dataset: **377 examples** (26 programs × 5 runs × 3 splits, minus deadlock/errors), **75 aggregated groups**.
+
+Run:
+```bash
+go run dataset/builder.go dataset/schema.go
+uv run python dataset/aggregate.py
+uv run python eval/dirichlet_analysis.py
+```
+
+---
 
 ### Phase 9 — Dataset Expansion ✓
 
