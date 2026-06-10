@@ -59,7 +59,7 @@ app = modal.App("weave-ccwm")
 
 
 @app.function(
-    gpu="A10G",
+    gpu="L4",
     image=image,
     mounts=mounts,
     volumes={"/output": output_vol},
