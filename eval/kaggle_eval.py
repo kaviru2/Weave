@@ -34,14 +34,14 @@ if os.path.exists("/kaggle/input"):
     ADAPTER_PATH = "/kaggle/input/weave-lora-adapter"
     VAL_FILE     = "/kaggle/input/weave-sft-dataset/val_point_dups.jsonl"
     RESULTS_PATH = "/kaggle/working/eval_results_lora.json"
-    MAX_TOKENS   = 1024   # GPU — no CPU O(n²) constraint
+    MAX_TOKENS   = 2048   # T4 GPU: 3GB model + 2048-token KV cache fits easily in 14.5GB
     DEVICE_STR   = "cuda"
 else:
     BASE_MODEL   = "Qwen/Qwen2.5-Coder-1.5B-Instruct"
     ADAPTER_PATH = "dataset/output/lora_adapter"
     VAL_FILE     = "dataset/output/val_point_dups.jsonl"
     RESULTS_PATH = "eval/results/eval_results_lora.json"
-    MAX_TOKENS   = 512
+    MAX_TOKENS   = 1024   # CPU fallback — still uses slim trace to stay under 1024
     DEVICE_STR   = "cpu"
 
 MAX_NEW_TOKENS = 60
@@ -50,33 +50,45 @@ ALL_EVENT_TYPES = ["GoBlock", "GoCreate", "GoEnd", "GoSched", "GoStart", "GoUnbl
 
 def smart_truncate_messages(messages, tokenizer, max_tokens):
     """
-    Restructure prompt to fit within max_tokens while preserving the critical tail.
-    Keeps: program header (first 20 lines) + last 3 trace events +
-           full current state + prediction request.
+    Fit the prompt within max_tokens while preserving the critical tail.
+
+    On Kaggle GPU (max_tokens=2048): uses the ORIGINAL full trace format — same as
+    training distribution. Left-truncation cuts the program body if the prompt exceeds
+    2048 tokens, but keeps full current_state + prediction request.
+
+    On CPU fallback (max_tokens=1024): slims trace events to {event_id, event_type,
+    goroutine_id} to stay within budget.
     """
     system_msg   = messages[0]
     user_content = messages[1]["content"]
 
+    # For large budgets, use the original prompt directly (stays in training distribution)
+    if max_tokens >= 2048:
+        prompt = tokenizer.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True,
+        )
+        return tokenizer(
+            prompt, return_tensors="pt",
+            truncation=True, max_length=max_tokens,
+            truncation_side="left",   # cut program body first, preserve tail
+        )
+
+    # CPU fallback: slim trace events to keep within 1024 tokens
     prog_match  = re.search(r"<program>(.*?)</program>",             user_content, re.DOTALL)
     trace_match = re.search(r"<trace>(.*?)</trace>",                 user_content, re.DOTALL)
     state_match = re.search(r"<current_state>(.*?)</current_state>", user_content, re.DOTALL)
 
-    if prog_match:
-        prog_lines = prog_match.group(1).strip().split("\n")
-        prog_head  = "\n".join(prog_lines[:20])
-    else:
-        prog_head = ""
+    prog_head = "\n".join(prog_match.group(1).strip().split("\n")[:15]) if prog_match else ""
 
     if trace_match:
         try:
             events = json.loads(trace_match.group(1).strip())
             slim_events = [
-                {
-                    "event_id":    ev.get("event_id"),
-                    "event_type":  ev.get("event_type"),
-                    "goroutine_id": ev.get("goroutine_id"),
-                }
-                for ev in events[-5:]   # last 5 slim events keeps ~620 tokens well under 1024
+                {"event_id": ev.get("event_id"), "event_type": ev.get("event_type"),
+                 "goroutine_id": ev.get("goroutine_id")}
+                for ev in events[-5:]
             ]
             trace_short = json.dumps(slim_events, indent=2)
         except (json.JSONDecodeError, TypeError):
@@ -107,12 +119,8 @@ def smart_truncate_messages(messages, tokenizer, max_tokens):
 
     reconstructed = [system_msg, {"role": "user", "content": new_user}]
     prompt = tokenizer.apply_chat_template(
-        reconstructed,
-        tokenize=False,
-        add_generation_prompt=True,
+        reconstructed, tokenize=False, add_generation_prompt=True,
     )
-    # Left truncation: if still over budget, cut from the beginning (program header)
-    # rather than the end (task instruction) — preserves the critical prediction request.
     return tokenizer(
         prompt, return_tensors="pt",
         truncation=True, max_length=max_tokens,
