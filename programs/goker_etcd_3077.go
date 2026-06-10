@@ -1,0 +1,92 @@
+// WEAVE_META
+// outcome: race
+// concurrency_pattern: select
+// goroutine_count: 3
+// expected_nondeterminism: medium
+// description: Human-written GoBench bug kernel etcd_3077 (race)
+
+package main
+
+import (
+	"os"
+	"runtime/trace"
+		"time"
+)
+
+type raftNode struct {
+	s       *EtcdServer
+	stopped chan struct{}
+	done    chan struct{}
+}
+
+func (r *raftNode) run() {
+	r.stopped = make(chan struct{})
+	r.done = make(chan struct{})
+	defer r.stop()
+	for {
+		select {
+		case <-r.stopped:
+			return
+		}
+	}
+}
+
+func (r *raftNode) stop() {
+	close(r.done)
+}
+
+type EtcdServer struct {
+	r    raftNode
+	done chan struct{}
+	stop chan struct{}
+}
+
+func (s *EtcdServer) run() {
+	go s.r.run()
+	// Wait s.r.run
+	time.Sleep(10 * time.Millisecond)
+	defer func() {
+		s.r.stopped <- struct{}{}
+		<-s.r.done
+		close(s.done)
+	}()
+
+	for {
+		select {
+		case <-s.stop:
+			return
+		}
+	}
+}
+
+func (s *EtcdServer) start() {
+	s.done = make(chan struct{})
+	s.stop = make(chan struct{})
+	go s.run()
+}
+
+func (s *EtcdServer) Stop() {
+	select {
+	case s.stop <- struct{}{}:
+	case <-s.done:
+		return
+	}
+	<-s.done
+}
+
+func main() {
+	if tf := os.Getenv("WEAVE_TRACE_FILE"); tf != "" {
+		f, err := os.Create(tf)
+		if err == nil {
+			if err := trace.Start(f); err == nil {
+				defer func() { trace.Stop(); f.Close() }()
+			}
+		}
+	}
+
+	srv := &EtcdServer{
+		r: raftNode{},
+	}
+	srv.start()
+	defer srv.Stop()
+}
