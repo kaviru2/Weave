@@ -391,7 +391,7 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int, default=4, help="Batch size per device")
     parser.add_argument("--grad_accum", type=int, default=2, help="Gradient accumulation steps")
     parser.add_argument("--lr", type=float, default=2e-4, help="Learning rate")
-    parser.add_argument("--max_seq_length", type=int, default=2048, help="Maximum sequence length")
+    parser.add_argument("--max_seq_length", type=int, default=4096, help="Maximum sequence length")
     parser.add_argument("--lora_r", type=int, default=8, help="LoRA rank dimension")
     parser.add_argument("--lora_alpha", type=int, default=16, help="LoRA alpha scaling parameter")
     parser.add_argument("--lora_dropout", type=float, default=0.05, help="LoRA dropout rate")

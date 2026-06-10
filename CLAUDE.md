@@ -29,9 +29,9 @@ Weave's research questions:
 > bug detection than point-prediction models. Nobody has done this — it is a direct
 > consequence of concurrent execution being nondeterministic.
 
-Phases 1–10 are complete. Feasibility is confirmed, distribution learning is evaluated,
-and a LoRA fine-tuned model (91.7% val token accuracy vs 56% zero-shot baseline) has been
-trained. The leak corpus has been expanded to 26 programs. WSO2 research proposal is next.
+Phases 1–12 complete. Phase 12 fine-tuned Qwen2.5-Coder-1.5B on A40 (40.2% accuracy).
+Qwen zero-shot baseline pending. Next: GoKer held-out test set (Phase 13), distribution-loss
+training (Phase 14). See STATUS.md for current state and immediate next steps.
 
 ---
 
@@ -40,9 +40,37 @@ trained. The leak corpus has been expanded to 26 programs. WSO2 research proposa
 - 4th year undergrad, doing this for fun and potential research
 - Has volunteer/org access to WSO2 (creators of Ballerina)
 - Has access to WSO2 servers and RunPod for compute when needed
-- Working on M3 Pro MacBook, 18GB RAM
+- Working on M3 Pro MacBook, 18GB RAM (note: can't run 7B+ locally, bitsandbytes 4-bit requires CUDA)
 - WSO2 is also heavily invested in Go
-- The eventual goal is a research proposal to WSO2 for compute + collaboration
+- End goal is CCWM itself — not just a WSO2 proposal
+
+## Compute Infrastructure
+
+**RunPod** is the primary GPU compute for training. See `RUNPOD_STATUS.md` for current pod info.
+
+**Deploy a new training run:**
+```bash
+RUNPOD_IP=<ip> RUNPOD_PORT=<port> bash scripts/runpod_deploy.sh
+```
+This handles SCP, dep install, and tmux launch automatically. SSH key: `~/.ssh/id_runpod`
+(public key `ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHHXUJRiDtYdu9XlcMM9Hp6JrXcyUgjvLgYDFJ3awZCv runpod-weave` must be in RunPod account settings).
+
+**GPU selection (cost guidance):**
+- **RTX 4000 Ada (20GB, ~$0.76/hr)** — recommended for 1.5B–3B QLoRA; more cost-effective than A40
+- **A40 (48GB, ~$1.28/hr)** — used for Phase 12; good for up to 7B QLoRA
+- **A100-40GB (~$1.49/hr on Modal)** — use for 7B+ or when batch size matters
+
+**Unsloth** (`pip install unsloth`) — 2× faster training + 60% less VRAM via fused kernels.
+Drop-in replacement for standard HuggingFace training. Use for future runs:
+```python
+from unsloth import FastLanguageModel  # replaces AutoModelForCausalLM
+```
+See https://github.com/unslothai/unsloth for Qwen2.5 support. Compatible with TRL/PEFT.
+
+**Compatible dep versions for RunPod PyTorch template (torch 2.4.x):**
+```
+transformers==4.46.3  peft==0.13.2  trl==0.11.4  bitsandbytes==0.44.1  accelerate==0.34.2  datasets==3.0.1
+```
 
 ---
 
@@ -66,9 +94,11 @@ next states.
 9. **Ballerina** — extend to Ballerina concurrent programs (requires WSO2 conversation)
 
 **Immediate next steps:**
-- Fix `eval/inference_check.py` truncation bug → proper head-to-head eval (fine-tuned vs 56% zero-shot)
-- `eval/simulation_rollout.py` — autoregressive trajectory rollout: feed model's own predictions back as input, measure how far simulated execution diverges from real traces
-- Distribution-loss training: retrain with KL divergence against empirical distributions (Phase 6 targets) instead of cross-entropy on a single run
+1. **Commit zero-shot baseline** — `eval/results/eval_results_zeroshot.json` from RunPod (Qwen base model, no adapter); update HF model card
+2. **Merge phase-12-modal-train → main** via PR
+3. **Phase 13 — GoKer held-out test set** — rebuild dataset with `goker_*` programs as held-out test (never seen during training); train on hand-crafted + gen only; eval on GoKer real bugs — this is the publishable eval claim
+4. **Phase 14 — Distribution-loss training** — retrain with KL divergence against Phase 6 empirical distributions instead of cross-entropy; use Unsloth for speed; use RTX 4000 Ada for cost
+5. **Phase 15 — Autoregressive rollout** (`eval/simulation_rollout.py`) — feed predictions back as input, measure trajectory divergence from real traces
 
 **Compute strategy:** Kaggle free tier proved viable for 1.5B QLoRA. Larger models and
 distribution training need A100/H100. RunPod or WSO2 infrastructure for that step.

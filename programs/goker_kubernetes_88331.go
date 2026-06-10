@@ -1,0 +1,131 @@
+// WEAVE_META
+// outcome: race
+// concurrency_pattern: mutex
+// goroutine_count: 3
+// expected_nondeterminism: medium
+// description: Human-written GoBench bug kernel kubernetes_88331 (race)
+
+package main
+
+import (
+	"os"
+	"runtime/trace"
+	"sync"
+	)
+
+type data struct {
+	queue []struct{}
+}
+
+func (h *data) Pop() {
+	h.queue = h.queue[0 : len(h.queue)-1]
+}
+
+type Interface interface {
+	Pop()
+}
+
+func Pop(h Interface) {
+	h.Pop()
+}
+
+type Heap struct {
+	data *data
+}
+
+func (h *Heap) Pop() {
+	Pop(h.data)
+}
+func (h *Heap) Len() int {
+	return len(h.data.queue)
+}
+
+func NewWithRecorder() *Heap {
+	return &Heap{
+		data: &data{
+			queue: []struct{}{
+				struct{}{},
+				struct{}{},
+			},
+		},
+	}
+}
+
+type PriorityQueue struct {
+	stop        chan struct{}
+	lock        sync.RWMutex
+	podBackoffQ *Heap
+	activeQ     *Heap
+}
+
+func (p *PriorityQueue) flushBackoffQCompleted() {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	p.podBackoffQ.Pop()
+
+}
+
+func NewPriorityQueue() *PriorityQueue {
+	return &PriorityQueue{
+		stop:        make(chan struct{}),
+		activeQ:     NewWithRecorder(),
+		podBackoffQ: NewWithRecorder(),
+	}
+}
+
+func createAndRunPriorityQueue() *PriorityQueue {
+	q := NewPriorityQueue()
+	q.Run()
+	return q
+}
+
+func (p *PriorityQueue) Run() {
+	go Until(p.flushBackoffQCompleted, p.stop)
+}
+
+func BackoffUntil(f func(), stopCh <-chan struct{}) {
+	for {
+		select {
+		case <-stopCh:
+			return
+		default:
+		}
+
+		func() {
+			f()
+		}()
+
+		select {
+		case <-stopCh:
+			return
+		}
+	}
+}
+
+func JitterUntil(f func(), stopCh <-chan struct{}) {
+	BackoffUntil(f, stopCh)
+}
+
+func Until(f func(), stopCh <-chan struct{}) {
+	JitterUntil(f, stopCh)
+}
+
+func main() {
+	if tf := os.Getenv("WEAVE_TRACE_FILE"); tf != "" {
+		f, err := os.Create(tf)
+		if err == nil {
+			if err := trace.Start(f); err == nil {
+				defer func() { trace.Stop(); f.Close() }()
+			}
+		}
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		wg.Done()
+		p := createAndRunPriorityQueue()
+		p.podBackoffQ.Len()
+	}()
+	wg.Wait()
+}

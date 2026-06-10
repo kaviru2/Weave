@@ -19,8 +19,15 @@ import json
 import random
 import glob
 import logging
+import copy
 from collections import defaultdict
 from typing import Any, Dict, List, Tuple
+
+try:
+    from transformers import AutoTokenizer
+    tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen2.5-Coder-1.5B-Instruct", trust_remote_code=True)
+except Exception as e:
+    tokenizer = None
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -87,6 +94,99 @@ def build_prompts(
     return program_source, partial_trace, next_events
 
 
+def smart_truncate_messages(messages: List[Dict[str, str]], max_tokens: int = 4000) -> List[Dict[str, str]]:
+    """Smartly shrinks the program and trace sections so the prompt fits under max_tokens."""
+    if not tokenizer:
+        return messages
+    
+    msgs = copy.deepcopy(messages)
+    prompt = tokenizer.apply_chat_template(msgs, tokenize=False)
+    tokens = tokenizer(prompt)["input_ids"]
+    if len(tokens) <= max_tokens:
+        return msgs
+
+    user_content = msgs[1]["content"]
+
+    # 1. Truncate Trace to last 10 events and cap string size
+    try:
+        trace_start = user_content.index("<trace>\n") + len("<trace>\n")
+        trace_end = user_content.index("\n</trace>")
+        trace_str = user_content[trace_start:trace_end]
+        
+        trace_json = json.loads(trace_str)
+        if len(trace_json) > 10:
+            trace_json = trace_json[-10:]
+            
+        # If trace is still huge, remove goroutines block from all but last event
+        trace_str = json.dumps(trace_json, indent=2)
+        if len(trace_str) > 8000:
+            for i in range(len(trace_json) - 1):
+                if "goroutines" in trace_json[i]:
+                    trace_json[i]["goroutines"] = "... [TRUNCATED FOR LENGTH] ..."
+            trace_str = json.dumps(trace_json, indent=2)
+            
+            if len(trace_str) > 8000:
+                trace_str = trace_str[:4000] + "\n... [TRUNCATED TRACE] ...\n" + trace_str[-4000:]
+                
+        user_content = user_content[:trace_start] + trace_str + user_content[trace_end:]
+        msgs[1]["content"] = user_content
+            
+    except Exception:
+        pass
+
+    prompt = tokenizer.apply_chat_template(msgs, tokenize=False)
+    tokens = tokenizer(prompt)["input_ids"]
+    if len(tokens) <= max_tokens:
+        return msgs
+
+    # 2. Truncate Current State
+    try:
+        state_start = user_content.index("<current_state>\n") + len("<current_state>\n")
+        state_end = user_content.index("\n</current_state>")
+        state_str = user_content[state_start:state_end]
+        
+        if len(state_str) > 1000:
+            state_str = state_str[:1000] + "\n... [TRUNCATED STATE] ..."
+            user_content = user_content[:state_start] + state_str + user_content[state_end:]
+            msgs[1]["content"] = user_content
+            
+    except Exception:
+        pass
+
+    prompt = tokenizer.apply_chat_template(msgs, tokenize=False)
+    tokens = tokenizer(prompt)["input_ids"]
+    if len(tokens) <= max_tokens:
+        return msgs
+
+    # 3. Truncate Program iteratively
+    try:
+        prog_start = user_content.index("<program>\n") + len("<program>\n")
+        prog_end = user_content.index("\n</program>")
+        prog_str = user_content[prog_start:prog_end]
+        
+        # We will use a safe static length to guarantee it fits. 4000 tokens is ~12,000 characters total.
+        # If the tokens are still > max_tokens, the program is the largest block remaining.
+        if len(prog_str) > 2000:
+            prog_str = prog_str[:1000] + "\n... [TRUNCATED] ...\n" + prog_str[-1000:]
+            user_content = user_content[:prog_start] + prog_str + user_content[prog_end:]
+            msgs[1]["content"] = user_content
+            
+            prompt = tokenizer.apply_chat_template(msgs, tokenize=False)
+            tokens = tokenizer(prompt)["input_ids"]
+            
+            if len(tokens) > max_tokens:
+                # Still too big, truncate even more aggressively
+                prog_end_new = user_content.index("\n</program>")
+                prog_str_new = user_content[prog_start:prog_end_new]
+                prog_str_new = prog_str_new[:500] + "\n... [TRUNCATED] ...\n"
+                user_content = user_content[:prog_start] + prog_str_new + user_content[prog_end_new:]
+                msgs[1]["content"] = user_content
+    except Exception:
+        pass
+
+    return msgs
+
+
 def format_dist_chat_message(
     program_source: str, 
     partial_trace: List[Dict[str, Any]], 
@@ -119,13 +219,13 @@ Respond ONLY in JSON with exactly these keys — no markdown fences, no text out
 
     assistant_content = json.dumps(distribution)
 
-    return {
-        "messages": [
-            {"role": "system", "content": "You are a code execution simulator."},
-            {"role": "user", "content": user_content},
-            {"role": "assistant", "content": assistant_content}
-        ]
-    }
+    messages = [
+        {"role": "system", "content": "You are a code execution simulator."},
+        {"role": "user", "content": user_content},
+        {"role": "assistant", "content": assistant_content}
+    ]
+
+    return {"messages": smart_truncate_messages(messages)}
 
 
 def format_point_chat_message(
@@ -163,13 +263,13 @@ Respond in JSON only — no markdown fences, no text outside the JSON object:
         "goroutine_id": int(next_event["goroutine_id"])
     })
 
-    return {
-        "messages": [
-            {"role": "system", "content": "You are a code execution simulator."},
-            {"role": "user", "content": user_content},
-            {"role": "assistant", "content": assistant_content}
-        ]
-    }
+    messages = [
+        {"role": "system", "content": "You are a code execution simulator."},
+        {"role": "user", "content": user_content},
+        {"role": "assistant", "content": assistant_content}
+    ]
+
+    return {"messages": smart_truncate_messages(messages)}
 
 
 def split_programs(aggregated: List[Dict[str, Any]], seed: int = 42) -> Tuple[set, set]:
