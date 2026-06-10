@@ -4,18 +4,18 @@ Live tracker for GPU training runs. Update after each run.
 
 ---
 
-## Current Run — Phase 12 (Qwen2.5-Coder-1.5B POC)
+## Last Run — Phase 12 (Qwen2.5-Coder-1.5B POC) — COMPLETE
 
 | Field | Value |
 |-------|-------|
-| **Status** | 🟡 RUNNING |
+| **Status** | DONE — terminate pod |
 | **Pod name** | weave-2 |
 | **GPU** | NVIDIA A40 48GB |
 | **IP / Port** | 69.30.85.12 : 22013 |
 | **SSH key** | `~/.ssh/id_runpod` |
 | **Started** | 2026-06-10 ~16:17 UTC |
-| **ETA** | ~18:00 UTC (~80 min from start) |
-| **Cost** | ~$1.28/hr A40 → ~$1.70 total |
+| **Finished** | 2026-06-11 ~00:05 UTC |
+| **Cost** | ~$1.28/hr A40 → ~$9.90 total (7.7 hr: train + zero-shot eval) |
 
 **Training config:**
 - Model: `Qwen/Qwen2.5-Coder-1.5B-Instruct`
@@ -55,7 +55,8 @@ Script handles everything: file upload, dep install, tmux launch, progress monit
 
 | Date | Model | GPU | Steps/time | Accuracy | Notes |
 |------|-------|-----|-----------|----------|-------|
-| 2026-06-10 | Qwen2.5-Coder-1.5B | A40 48GB | 516 / ~80min | TBD | Phase 12 POC, fixed truncation bug |
+| 2026-06-10/11 | Qwen2.5-Coder-1.5B fine-tuned | A40 48GB | 516 / ~80min | **40.2%** | Phase 12, fixed truncation bug |
+| 2026-06-11 | Qwen2.5-Coder-1.5B zero-shot | A40 48GB | N/A / ~8min | **0.0%** | Base model baseline, 366 examples |
 | 2026-06-09 | Qwen2.5-Coder-1.5B | Kaggle T4 | ~1035 / 2hr | 91.7% val token acc* | Phase 10, **had truncation bug** |
 
 *Phase 10 val token accuracy was misleading — SFTTrainer was right-truncating 87% of examples

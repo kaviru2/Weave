@@ -1,70 +1,50 @@
 #!/usr/bin/env python3
 """
-scripts/run_eval.py — standalone eval script. Works on CUDA (RunPod), MPS (Mac
-Apple Silicon), and CPU. No bitsandbytes required — loads in float16/bfloat16.
+scripts/run_eval_zeroshot.py
+
+Zero-shot eval — loads the base model with NO adapter.
+Used to establish the Qwen2.5-Coder-1.5B baseline for fair comparison
+against the fine-tuned version.
 
 Usage:
-    # Mac (M-series):
-    uv run python scripts/run_eval.py \
-        --adapter  dataset/output/lora_adapter_v2 \
-        --val_file dataset/output/kaggle_upload/val_point_dups.jsonl
-
-    # RunPod / CUDA:
-    python run_eval.py \
-        --adapter  /root/lora_adapter \
+    python run_eval_zeroshot.py \
         --val_file /root/val_point_dups.jsonl \
-        --out_file /root/eval_results.json
+        --model_id Qwen/Qwen2.5-Coder-1.5B-Instruct \
+        --out_file /root/eval_results_zeroshot.json
 """
 import argparse, json, time, os
 from collections import defaultdict
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from peft import PeftModel
 
 os.environ["HF_HUB_DISABLE_XET"] = "1"
 
 MAX_NEW_TOKENS = 60
 
 
-def get_device():
-    if torch.cuda.is_available():
-        return torch.device("cuda")
-    if torch.backends.mps.is_available():
-        return torch.device("mps")
-    return torch.device("cpu")
-
-
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--adapter",  required=True)
     parser.add_argument("--val_file", required=True)
     parser.add_argument("--model_id", default="Qwen/Qwen2.5-Coder-1.5B-Instruct")
-    parser.add_argument("--out_file", default="eval_results.json")
+    parser.add_argument("--out_file", default="eval_results_zeroshot.json")
     parser.add_argument("--max_tokens", type=int, default=4096)
     args = parser.parse_args()
 
-    device = get_device()
-    # MPS works best with bfloat16; CUDA and CPU use float16
-    dtype = torch.bfloat16 if device.type == "mps" else torch.float16
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    dtype  = torch.float16
     print(f"Device: {device}  |  dtype: {dtype}")
-    print(f"Loading base model: {args.model_id}")
+    print(f"Loading base model (NO adapter): {args.model_id}")
 
     tokenizer = AutoTokenizer.from_pretrained(args.model_id, trust_remote_code=True)
     tokenizer.truncation_side = "left"
-    base_model = AutoModelForCausalLM.from_pretrained(
+    model = AutoModelForCausalLM.from_pretrained(
         args.model_id,
         torch_dtype=dtype,
-        # device_map="auto" only works on CUDA; for MPS/CPU load then move manually
-        device_map="auto" if device.type == "cuda" else None,
+        device_map="auto" if torch.cuda.is_available() else None,
         trust_remote_code=True,
     )
-    if device.type != "cuda":
-        base_model = base_model.to(device)
-
-    print(f"Loading adapter: {args.adapter}")
-    model = PeftModel.from_pretrained(base_model, args.adapter)
     model.eval()
-    print("Model ready.\n")
+    print("Base model ready (zero-shot).\n")
 
     with open(args.val_file) as f:
         examples = [json.loads(line) for line in f]
@@ -131,35 +111,28 @@ def main():
 
         if (i + 1) % 10 == 0:
             elapsed = time.time() - t0
-            print(f"  [{i+1:3d}/{total}]  {correct}/{i+1} = {correct/(i+1):.1%}  ({elapsed:.0f}s)")
+            print(f"  [{i+1:3d}/{total}]  {correct}/{i+1} = {correct/(i+1):.1%}  ({elapsed:.0f}s)", flush=True)
 
     elapsed = time.time() - t0
 
     print("\n" + "=" * 65)
-    print(f"  event_type accuracy : {correct}/{total} = {correct/total:.1%}")
-    print(f"  Zero-shot baseline  : 56.0%")
-    print(f"  Elapsed             : {elapsed:.0f}s")
+    print(f"  BASE MODEL (zero-shot) accuracy : {correct}/{total} = {correct/total:.1%}")
+    print(f"  Fine-tuned (Phase 12)           : 40.2%")
+    print(f"  Gemini zero-shot (Phase 4)      : 56.0%")
+    print(f"  Elapsed                         : {elapsed:.0f}s")
     print("=" * 65)
 
-    print("\n  By concurrency pattern:")
-    for pat, c in sorted(per_pattern.items()):
-        acc = c["correct"]/c["total"] if c["total"] else 0
-        print(f"    {pat:<20}  {c['correct']:3d}/{c['total']:3d} = {acc:.1%}")
-
-    print("\n  By nondeterminism level:")
-    for nd, c in sorted(per_nd.items()):
-        acc = c["correct"]/c["total"] if c["total"] else 0
-        print(f"    {nd:<10}  {c['correct']:3d}/{c['total']:3d} = {acc:.1%}")
-
     results = {
-        "model": args.model_id, "adapter": args.adapter,
+        "model": args.model_id, "adapter": None,
         "total_examples": total, "correct": correct,
-        "accuracy": correct/total, "zero_shot_baseline": 0.56,
+        "accuracy": correct/total,
+        "finetuned_accuracy": 0.402,
+        "gemini_baseline": 0.56,
         "elapsed_seconds": elapsed,
-        "by_pattern":       {k: v for k, v in per_pattern.items()},
-        "by_nondeterminism":{k: v for k, v in per_nd.items()},
-        "confusion":        {gt: dict(row) for gt, row in confusion.items()},
-        "per_example":      per_example,
+        "by_pattern":        {k: v for k, v in per_pattern.items()},
+        "by_nondeterminism": {k: v for k, v in per_nd.items()},
+        "confusion":         {gt: dict(row) for gt, row in confusion.items()},
+        "per_example":       per_example,
     }
     with open(args.out_file, "w") as f:
         json.dump(results, f, indent=2)
