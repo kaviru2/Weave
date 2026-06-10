@@ -2,27 +2,27 @@
 """
 train_modal.py
 
-Single-command Weave QLoRA fine-tune + eval on Modal A10G GPU (~40 min, ~$0.50).
+Single-command Weave QLoRA fine-tune + eval on Modal L4 GPU (~30 min, ~$0.38).
 Trains Qwen2.5-Coder-1.5B-Instruct on the pre-truncated Weave dataset, then
 immediately evaluates the adapter on the full val set and prints accuracy vs
 the 56% zero-shot baseline.
 
 Setup (one-time):
-    pip install modal
+    uv pip install modal
     modal setup          # browser auth
 
 Run:
-    modal run train_modal.py
+    .venv/bin/modal run train_modal.py
 
 Download adapter after run:
-    modal volume get weave-output lora_adapter ./dataset/output/lora_adapter_v2
+    .venv/bin/modal volume get weave-output lora_adapter ./dataset/output/lora_adapter_v2
 """
 
 import modal
 import os
 import json
 
-# ── Image: all ML deps pre-installed ─────────────────────────────────────────
+# ── Image: pip deps + local files baked in ───────────────────────────────────
 image = (
     modal.Image.debian_slim(python_version="3.11")
     .pip_install(
@@ -34,26 +34,17 @@ image = (
         "accelerate>=0.28.0",
         "datasets>=2.18.0",
     )
+    .add_local_file("dataset/train_lora.py", "/scripts/train_lora.py")
+    .add_local_file(
+        "dataset/output/kaggle_upload/train_point_dups.jsonl", "/data/train.jsonl"
+    )
+    .add_local_file(
+        "dataset/output/kaggle_upload/val_point_dups.jsonl", "/data/val.jsonl"
+    )
 )
 
 # ── Persistent volume for adapter + eval results ──────────────────────────────
 output_vol = modal.Volume.from_name("weave-output", create_if_missing=True)
-
-# ── Local files to mount into the container ───────────────────────────────────
-mounts = [
-    modal.Mount.from_local_file(
-        "dataset/output/kaggle_upload/train_point_dups.jsonl",
-        remote_path="/data/train.jsonl",
-    ),
-    modal.Mount.from_local_file(
-        "dataset/output/kaggle_upload/val_point_dups.jsonl",
-        remote_path="/data/val.jsonl",
-    ),
-    modal.Mount.from_local_file(
-        "dataset/train_lora.py",
-        remote_path="/scripts/train_lora.py",
-    ),
-]
 
 app = modal.App("weave-ccwm")
 
@@ -61,9 +52,8 @@ app = modal.App("weave-ccwm")
 @app.function(
     gpu="L4",
     image=image,
-    mounts=mounts,
     volumes={"/output": output_vol},
-    timeout=7200,
+    timeout=10800,
 )
 def train_and_eval():
     import subprocess
@@ -77,13 +67,15 @@ def train_and_eval():
     from peft import PeftModel
 
     os.environ["HF_HUB_DISABLE_XET"] = "1"
+    os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
     # ── Phase 1: Train ────────────────────────────────────────────────────────
     print("=" * 65)
     print("PHASE 1: TRAINING")
     print("=" * 65)
 
-    subprocess.run(
+    # Use Popen + line streaming so Modal's gRPC connection stays alive during training
+    proc = subprocess.Popen(
         [
             sys.executable, "/scripts/train_lora.py",
             "--model_id",       "Qwen/Qwen2.5-Coder-1.5B-Instruct",
@@ -91,12 +83,21 @@ def train_and_eval():
             "--val_file",       "/data/val.jsonl",
             "--output_dir",     "/output/lora_adapter",
             "--epochs",         "3",
-            "--batch_size",     "4",
-            "--grad_accum",     "2",
+            "--batch_size",     "2",   # 4 OOMs on L4 at seq_len=4096
+            "--grad_accum",     "4",   # effective batch size stays 8
             "--max_seq_length", "4096",
         ],
-        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
     )
+    for line in proc.stdout:
+        print(line, end="", flush=True)
+    proc.wait()
+    if proc.returncode != 0:
+        raise RuntimeError(f"train_lora.py failed with exit code {proc.returncode}")
+
+    output_vol.commit()
     print("\nTraining complete. Adapter saved to /output/lora_adapter")
 
     # ── Phase 2: Eval ─────────────────────────────────────────────────────────
@@ -104,9 +105,9 @@ def train_and_eval():
     print("PHASE 2: EVALUATION")
     print("=" * 65)
 
-    BASE_MODEL   = "Qwen/Qwen2.5-Coder-1.5B-Instruct"
-    ADAPTER_PATH = "/output/lora_adapter"
-    VAL_FILE     = "/data/val.jsonl"
+    BASE_MODEL     = "Qwen/Qwen2.5-Coder-1.5B-Instruct"
+    ADAPTER_PATH   = "/output/lora_adapter"
+    VAL_FILE       = "/data/val.jsonl"
     MAX_NEW_TOKENS = 60
 
     print(f"Loading base model: {BASE_MODEL}")
@@ -178,7 +179,6 @@ def train_and_eval():
             match = True
             correct_type += 1
 
-        # Print first 5 for a sanity check
         if i < 5:
             status = "✓" if match else "✗"
             print(f"  [{i+1}] {status}  GT={ground_truth}  PR={prediction}")
@@ -242,7 +242,7 @@ def train_and_eval():
 
 @app.local_entrypoint()
 def main():
-    print("Launching Modal A10G job (train 3 epochs + full eval)...")
+    print("Launching Modal L4 job (train 3 epochs + full eval)...")
     print("Logs will stream here in real-time.\n")
 
     results = train_and_eval.remote()
@@ -258,4 +258,4 @@ def main():
     print(f"  Results saved  : {out_path}")
     print(f"{'='*65}")
     print(f"\nTo download the adapter locally:")
-    print(f"  modal volume get weave-output lora_adapter ./dataset/output/lora_adapter_v2")
+    print(f"  .venv/bin/modal volume get weave-output lora_adapter ./dataset/output/lora_adapter_v2")
