@@ -29,9 +29,9 @@ Weave's research questions:
 > bug detection than point-prediction models. Nobody has done this — it is a direct
 > consequence of concurrent execution being nondeterministic.
 
-Phases 1–10 are complete. Feasibility is confirmed, distribution learning is evaluated,
-and a LoRA fine-tuned model (91.7% val token accuracy vs 56% zero-shot baseline) has been
-trained. The leak corpus has been expanded to 26 programs. WSO2 research proposal is next.
+Phases 1–12 are in progress. Feasibility is confirmed, distribution learning is evaluated.
+Phase 10 LoRA training had a silent truncation bug (fixed in Phase 12). Phase 12 retraining
+is currently running on RunPod A40 48GB. See RUNPOD_STATUS.md for live training status.
 
 ---
 
@@ -40,9 +40,25 @@ trained. The leak corpus has been expanded to 26 programs. WSO2 research proposa
 - 4th year undergrad, doing this for fun and potential research
 - Has volunteer/org access to WSO2 (creators of Ballerina)
 - Has access to WSO2 servers and RunPod for compute when needed
-- Working on M3 Pro MacBook, 18GB RAM
+- Working on M3 Pro MacBook, 18GB RAM (note: can't run 7B+ locally, bitsandbytes 4-bit requires CUDA)
 - WSO2 is also heavily invested in Go
-- The eventual goal is a research proposal to WSO2 for compute + collaboration
+- End goal is CCWM itself — not just a WSO2 proposal
+
+## Compute Infrastructure
+
+**RunPod** is the primary GPU compute for training. See `RUNPOD_STATUS.md` for current pod info.
+
+**Deploy a new training run:**
+```bash
+RUNPOD_IP=<ip> RUNPOD_PORT=<port> bash scripts/runpod_deploy.sh
+```
+This handles SCP, dep install, and tmux launch automatically. SSH key: `~/.ssh/id_runpod`
+(public key `ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHHXUJRiDtYdu9XlcMM9Hp6JrXcyUgjvLgYDFJ3awZCv runpod-weave` must be in RunPod account settings).
+
+**Compatible dep versions for RunPod PyTorch template (torch 2.4.x):**
+```
+transformers==4.46.3  peft==0.13.2  trl==0.11.4  bitsandbytes==0.44.1  accelerate==0.34.2  datasets==3.0.1
+```
 
 ---
 

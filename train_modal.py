@@ -50,10 +50,10 @@ app = modal.App("weave-ccwm")
 
 
 @app.function(
-    gpu="L4",
+    gpu="A100-40GB",
     image=image,
     volumes={"/output": output_vol},
-    timeout=10800,
+    timeout=14400,
 )
 def train_and_eval():
     import subprocess
@@ -242,20 +242,13 @@ def train_and_eval():
 
 @app.local_entrypoint()
 def main():
-    print("Launching Modal L4 job (train 3 epochs + full eval)...")
-    print("Logs will stream here in real-time.\n")
+    print("Submitting Weave train+eval job to Modal A100-40GB...")
+    print("Run with --detach so the job survives local disconnects.\n")
 
-    results = train_and_eval.remote()
+    # Spawn fires the job without waiting — safe with --detach
+    train_and_eval.spawn()
 
-    os.makedirs("eval/results", exist_ok=True)
-    out_path = "eval/results/eval_results_modal.json"
-    with open(out_path, "w") as f:
-        json.dump(results, f, indent=2)
-
-    print(f"\n{'='*65}")
-    print(f"  Final accuracy : {results['correct']}/{results['total_examples']} = {results['accuracy']:.1%}")
-    print(f"  Zero-shot      : 56.0%")
-    print(f"  Results saved  : {out_path}")
-    print(f"{'='*65}")
-    print(f"\nTo download the adapter locally:")
-    print(f"  .venv/bin/modal volume get weave-output lora_adapter ./dataset/output/lora_adapter_v2")
+    print("Job submitted. Monitor at: https://modal.com/apps/hapuarachchikaviru")
+    print("\nWhen complete, download results with:")
+    print("  .venv/bin/modal volume get weave-output eval_results.json ./eval/results/eval_results_modal.json")
+    print("  .venv/bin/modal volume get weave-output lora_adapter ./dataset/output/lora_adapter_v2")
