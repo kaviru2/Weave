@@ -1,12 +1,18 @@
 #!/usr/bin/env python3
 """
-scripts/run_eval.py — standalone eval script for RunPod (or any CUDA machine).
+scripts/run_eval.py — standalone eval script. Works on CUDA (RunPod), MPS (Mac
+Apple Silicon), and CPU. No bitsandbytes required — loads in float16/bfloat16.
 
 Usage:
+    # Mac (M-series):
+    uv run python scripts/run_eval.py \
+        --adapter  dataset/output/lora_adapter_v2 \
+        --val_file dataset/output/kaggle_upload/val_point_dups.jsonl
+
+    # RunPod / CUDA:
     python run_eval.py \
         --adapter  /root/lora_adapter \
         --val_file /root/val_point_dups.jsonl \
-        --model_id Qwen/Qwen2.5-Coder-1.5B-Instruct \
         --out_file /root/eval_results.json
 """
 import argparse, json, time, os
@@ -20,6 +26,14 @@ os.environ["HF_HUB_DISABLE_XET"] = "1"
 MAX_NEW_TOKENS = 60
 
 
+def get_device():
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    if torch.backends.mps.is_available():
+        return torch.device("mps")
+    return torch.device("cpu")
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--adapter",  required=True)
@@ -29,17 +43,23 @@ def main():
     parser.add_argument("--max_tokens", type=int, default=4096)
     args = parser.parse_args()
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Device: {device}")
+    device = get_device()
+    # MPS works best with bfloat16; CUDA and CPU use float16
+    dtype = torch.bfloat16 if device.type == "mps" else torch.float16
+    print(f"Device: {device}  |  dtype: {dtype}")
     print(f"Loading base model: {args.model_id}")
 
     tokenizer = AutoTokenizer.from_pretrained(args.model_id, trust_remote_code=True)
     base_model = AutoModelForCausalLM.from_pretrained(
         args.model_id,
-        torch_dtype=torch.float16,
-        device_map="auto" if torch.cuda.is_available() else None,
+        torch_dtype=dtype,
+        # device_map="auto" only works on CUDA; for MPS/CPU load then move manually
+        device_map="auto" if device.type == "cuda" else None,
         trust_remote_code=True,
     )
+    if device.type != "cuda":
+        base_model = base_model.to(device)
+
     print(f"Loading adapter: {args.adapter}")
     model = PeftModel.from_pretrained(base_model, args.adapter)
     model.eval()
