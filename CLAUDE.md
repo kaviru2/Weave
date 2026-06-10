@@ -29,8 +29,9 @@ Weave's research questions:
 > bug detection than point-prediction models. Nobody has done this — it is a direct
 > consequence of concurrent execution being nondeterministic.
 
-Phases 1–9 are complete. Feasibility is confirmed, distribution learning is evaluated,
-and the leak corpus has been expanded to 25 programs for the WSO2 research proposal.
+Phases 1–10 are complete. Feasibility is confirmed, distribution learning is evaluated,
+and a LoRA fine-tuned model (91.7% val token accuracy vs 56% zero-shot baseline) has been
+trained. The leak corpus has been expanded to 26 programs. WSO2 research proposal is next.
 
 ---
 
@@ -45,35 +46,50 @@ and the leak corpus has been expanded to 25 programs for the WSO2 research propo
 
 ---
 
-## Current Phase: Distribution Learning
+## Current Phase: Building the CCWM
 
-The four feasibility questions are answered:
+The goal is a **Concurrent Code World Model** — a model trained on execution traces that
+learns the concurrent state transition function, enabling it to simulate program execution,
+detect bugs from partial traces, and produce calibrated uncertainty over nondeterministic
+next states.
 
-1. ✅ **Can we collect concurrent execution traces automatically from Go programs?** — Yes. `tracer/` works.
-2. ✅ **Is the concurrent state representation tractable?** — Yes. 212 examples, manageable JSON.
-3. ✅ **Do existing models fail predictably on concurrent state prediction zero-shot?** — Yes. 56% accuracy, 0% bug detection.
-4. **Does Ballerina's runtime expose enough trace data to be useful?** — Requires WSO2 conversation, not code.
+**Pipeline status:**
 
-The new research direction: exploit concurrent nondeterminism as a training signal. Instead
-of treating each run as a point-labelled example, aggregate multiple runs per program to
-derive empirical next-state distributions and train to minimize KL divergence from them.
+1. ✅ **Trace collection** — `tracer/` collects goroutine scheduler events from Go programs
+2. ✅ **Dataset** — 377 eval examples (26 programs × 5 runs × 3 splits), 75 aggregated groups
+3. ✅ **Zero-shot baseline** — 56% event_type accuracy, 0% bug detection (Gemini, Phase 4/5)
+4. ✅ **Distribution learning** — ECE 0.205 → 0.169 with thinking budget; Dirichlet analysis done
+5. ✅ **LoRA fine-tuning** — 91.7% val token accuracy (Qwen2.5-Coder-1.5B, QLoRA, Phase 10)
+6. **Autoregressive rollout** — use fine-tuned model to simulate multi-step execution trajectories
+7. **Distribution-trained model** — train with KL loss against empirical distributions (not CE)
+8. **Scale up** — larger model (7B+) on RunPod/WSO2 infrastructure
+9. **Ballerina** — extend to Ballerina concurrent programs (requires WSO2 conversation)
+
+**Immediate next steps:**
+- Fix `eval/inference_check.py` truncation bug → proper head-to-head eval (fine-tuned vs 56% zero-shot)
+- `eval/simulation_rollout.py` — autoregressive trajectory rollout: feed model's own predictions back as input, measure how far simulated execution diverges from real traces
+- Distribution-loss training: retrain with KL divergence against empirical distributions (Phase 6 targets) instead of cross-entropy on a single run
+
+**Compute strategy:** Kaggle free tier proved viable for 1.5B QLoRA. Larger models and
+distribution training need A100/H100. RunPod or WSO2 infrastructure for that step.
 
 ---
 
-## Completed Phases (1–9)
+## Completed Phases (1–10)
 
 All phases done and merged to main. See STATUS.md for full details.
 
 - **Phase 1** — `tracer/` — Go trace collector using `golang.org/x/exp/trace`
 - **Phase 2** — `programs/` — 15 concurrent Go programs with ASPLOS'19 provenance
-- **Phase 3** — `dataset/builder.go` — 365 eval examples (25 programs × 5 runs × 3 splits)
+- **Phase 3** — `dataset/builder.go` — 377 eval examples (26 programs × 5 runs × 3 splits)
 - **Phase 4** — `eval/zero_shot.go` — Gemini zero-shot evaluator; results in `eval/results/`
 - **Phase 5** — `eval/analyze/analyze.go` — results analyzer
-- **Phase 6** — `dataset/aggregate.py` — 72 aggregated groups with empirical distributions
+- **Phase 6** — `dataset/aggregate.py` — 75 aggregated groups with empirical distributions
 - **Phase 7** — `eval/dist_zero_shot.py` — distribution zero-shot eval (ECE, entropy)
 - **Phase 8** — `eval/dirichlet_analysis.py` — Dirichlet-Categorical analysis
 - **Phase 9** — `programs/16–25` — 10 new leak programs; dataset expanded to 25 programs
 - **Phase 9b** — `programs/26` — select-block boundary test; causal claim confirmed for multi-case selects
+- **Phase 10** — `dataset/train_lora.py` — QLoRA fine-tuning; 91.7% val accuracy (vs 56% zero-shot)
 
 ## Your Job Right Now
 

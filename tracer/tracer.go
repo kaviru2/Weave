@@ -74,3 +74,44 @@ func RunProgram(ctx context.Context, sourceFile, outputDir string) (*RunResult, 
 		Stderr:     stderr.String(),
 	}, nil
 }
+
+// RunCompiledProgram executes a pre-built binary under the tracer, setting the
+// trace file output to traceFile. It passes the trace output path via the
+// WEAVE_TRACE_FILE environment variable.
+func RunCompiledProgram(ctx context.Context, binaryPath, traceFile string) (*RunResult, error) {
+	// Run the compiled binary under the caller's context so deadlock timeouts fire correctly.
+	cmd := exec.CommandContext(ctx, binaryPath)
+	cmd.Env = append(os.Environ(), "WEAVE_TRACE_FILE="+traceFile)
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	runErr := cmd.Run()
+
+	exitCode := 0
+	timedOut := false
+
+	if runErr != nil {
+		if ctx.Err() != nil {
+			// Context was cancelled or deadline exceeded — treat as timeout.
+			timedOut = true
+			exitCode = -1
+		} else if exitErr, ok := runErr.(*exec.ExitError); ok {
+			// Program exited with a non-zero code.
+			exitCode = exitErr.ExitCode()
+		} else {
+			return nil, fmt.Errorf("run binary %s: %w", binaryPath, runErr)
+		}
+	}
+
+	return &RunResult{
+		TraceFile:  traceFile,
+		RaceOutput: stderr.String(),
+		ExitCode:   exitCode,
+		TimedOut:   timedOut,
+		Stdout:     stdout.String(),
+		Stderr:     stderr.String(),
+	}, nil
+}
+
