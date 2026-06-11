@@ -22,9 +22,13 @@ Usage (on RunPod RTX 4000 Ada):
 
 from __future__ import annotations
 
+import os
+# Must be set before unsloth is imported — Unsloth bakes logit behaviour into
+# its compiled fast training loop at import time, not at trainer.train() time.
+os.environ["UNSLOTH_RETURN_LOGITS"] = "1"
+
 import argparse
 import json
-import os
 from functools import partial
 from typing import Any, Optional
 
@@ -411,7 +415,6 @@ def main() -> None:
     )
 
     print("\nStarting training...")
-    os.environ["UNSLOTH_RETURN_LOGITS"] = "1"
     trainer.train()
 
     print(f"\nSaving adapter to {args.output_dir}...")
