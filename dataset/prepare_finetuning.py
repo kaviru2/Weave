@@ -273,29 +273,34 @@ Respond in JSON only — no markdown fences, no text outside the JSON object:
 
 
 def split_programs(aggregated: List[Dict[str, Any]], seed: int = 42) -> Tuple[set, set]:
-    """Splits program IDs into 80% train / 20% validation, stratified by pattern."""
-    # Group programs by pattern
-    pattern_to_progs = defaultdict(set)
-    for group in aggregated:
-        pattern_to_progs[group["concurrency_pattern"]].add(group["program_id"])
-
+    """Splits program IDs by holding out all GoKer programs for evaluation,
+    and using hand-crafted and generated programs for training."""
     train_progs = set()
     val_progs = set()
 
-    random.seed(seed)
+    for group in aggregated:
+        prog_id = group["program_id"]
+        if prog_id.startswith("goker_"):
+            val_progs.add(prog_id)
+        else:
+            train_progs.add(prog_id)
 
-    for pattern, progs in sorted(pattern_to_progs.items()):
-        prog_list = sorted(list(progs))
-        random.shuffle(prog_list)
-        
-        split_idx = max(1, int(len(prog_list) * 0.8))
-        train_chunk = prog_list[:split_idx]
-        val_chunk = prog_list[split_idx:]
-        
-        train_progs.update(train_chunk)
-        val_progs.update(val_chunk)
-        
-        logging.info(f"Pattern '{pattern}' split: {len(train_chunk)} train, {len(val_chunk)} val. Programs: {prog_list}")
+    # Log split counts by pattern
+    train_patterns = defaultdict(set)
+    val_patterns = defaultdict(set)
+    for group in aggregated:
+        prog_id = group["program_id"]
+        pat = group["concurrency_pattern"]
+        if prog_id in train_progs:
+            train_patterns[pat].add(prog_id)
+        else:
+            val_patterns[pat].add(prog_id)
+
+    logging.info("--- SPLIT BY PATTERN ---")
+    for pat in sorted(set(list(train_patterns.keys()) + list(val_patterns.keys()))):
+        num_train = len(train_patterns[pat])
+        num_val = len(val_patterns[pat])
+        logging.info(f"Pattern '{pat}': {num_train} train, {num_val} val (held-out GoKer)")
 
     return train_progs, val_progs
 
@@ -309,7 +314,7 @@ def main():
         logging.error(f"Failed to load dataset: {e}")
         return
 
-    # Train / Val Stratified split
+    # Train / Val GoKer held-out split
     train_progs, val_progs = split_programs(aggregated)
     logging.info(f"Total split summary: {len(train_progs)} training programs, {len(val_progs)} validation programs.")
 
@@ -333,6 +338,8 @@ def main():
 
         # 1. Dist mode SFT format
         dist_msg = format_dist_chat_message(source, partial_trace, dist)
+        dist_msg["concurrency_pattern"] = group["concurrency_pattern"]
+        dist_msg["nondeterminism"] = group["nondeterminism"]
         if is_train:
             train_dist_items.append(dist_msg)
         else:
@@ -341,6 +348,10 @@ def main():
         # 2. Point mode SFT format (Frequency Duplication)
         for next_evt, run_idx in next_events:
             point_msg = format_point_chat_message(source, partial_trace, next_evt)
+            point_msg["concurrency_pattern"] = group["concurrency_pattern"]
+            point_msg["nondeterminism"] = group["nondeterminism"]
+            point_msg["program_id"] = program_id
+            point_msg["split_percent"] = split_percent
             if is_train:
                 train_point_items.append(point_msg)
             else:
@@ -354,12 +365,22 @@ def main():
         ("val_point_dups.jsonl", val_point_items)
     ]
 
+    os.makedirs(os.path.join(DATASET_DIR, "kaggle_upload"), exist_ok=True)
+
     for fname, data_list in files_to_write:
+        # Write to primary output directory
         out_path = os.path.join(DATASET_DIR, fname)
         with open(out_path, "w") as f:
             for item in data_list:
                 f.write(json.dumps(item) + "\n")
         logging.info(f"Wrote {len(data_list)} examples to {out_path}")
+
+        # Sync to kaggle_upload directory
+        kaggle_out_path = os.path.join(DATASET_DIR, "kaggle_upload", fname)
+        with open(kaggle_out_path, "w") as f:
+            for item in data_list:
+                f.write(json.dumps(item) + "\n")
+        logging.info(f"Synced {len(data_list)} examples to {kaggle_out_path}")
 
     logging.info("SFT dataset preparation complete!")
 

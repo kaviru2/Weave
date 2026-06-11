@@ -1,47 +1,39 @@
 #!/bin/bash
 # runpod_pod.sh — runs INSIDE the RunPod pod
-# Installs deps, trains, evals, prints results.
+# Installs Unsloth + deps, trains 7B QLoRA, evals, prints results.
 # Usage: bash /root/runpod_pod.sh
 set -e
 
-MODEL_ID="${MODEL_ID:-Qwen/Qwen2.5-Coder-1.5B-Instruct}"
+MODEL_ID="${MODEL_ID:-Qwen/Qwen2.5-Coder-7B-Instruct}"
 TRAIN_FILE="${TRAIN_FILE:-/root/train_point_dups.jsonl}"
 VAL_FILE="${VAL_FILE:-/root/val_point_dups.jsonl}"
-OUTPUT_DIR="${OUTPUT_DIR:-/root/lora_adapter}"
+AGGREGATED_FILE="${AGGREGATED_FILE:-/root/aggregated.json}"
+# Phase 14 saves to a different dir so it never overwrites the Phase 13 adapter
+if [ "${USE_KL:-0}" = "1" ]; then
+    OUTPUT_DIR="${OUTPUT_DIR:-/root/lora_adapter_kl}"
+else
+    OUTPUT_DIR="${OUTPUT_DIR:-/root/lora_adapter}"
+fi
 EPOCHS="${EPOCHS:-3}"
-BATCH_SIZE="${BATCH_SIZE:-4}"
-GRAD_ACCUM="${GRAD_ACCUM:-2}"
+BATCH_SIZE="${BATCH_SIZE:-1}"
+GRAD_ACCUM="${GRAD_ACCUM:-8}"
 MAX_SEQ_LEN="${MAX_SEQ_LEN:-4096}"
+KL_WEIGHT="${KL_WEIGHT:-1.0}"
+USE_KL="${USE_KL:-0}"   # set to "1" to run Phase 14 KL training
 
 echo "========================================"
-echo " Weave RunPod Training Script"
+echo " Weave RunPod Training Script (Unsloth)"
 echo " Model:      $MODEL_ID"
-echo " Epochs:     $EPOCHS | Batch: $BATCH_SIZE | Seq: $MAX_SEQ_LEN"
+echo " Mode:       $([ "$USE_KL" = "1" ] && echo "Phase 14 KL loss (kl_weight=$KL_WEIGHT)" || echo "Phase 13 CE loss")"
+echo " Epochs:     $EPOCHS | Batch: $BATCH_SIZE | GradAccum: $GRAD_ACCUM | Seq: $MAX_SEQ_LEN"
 echo " GPU:        $(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader 2>/dev/null || echo unknown)"
 echo "========================================"
 
-# ── Install deps pinned to torch 2.4.x (what RunPod PyTorch template ships) ──
-TORCH_VER=$(python -c "import torch; print(torch.__version__.split('+')[0])" 2>/dev/null || echo "0.0.0")
-TORCH_MAJOR=$(echo $TORCH_VER | cut -d. -f1)
-TORCH_MINOR=$(echo $TORCH_VER | cut -d. -f2)
-
+# ── Install Unsloth and compatible deps ───────────────────────────────────────
 echo ""
-echo "Detected PyTorch $TORCH_VER — installing compatible deps..."
-
-if [ "$TORCH_MAJOR" -ge 2 ] && [ "$TORCH_MINOR" -ge 5 ]; then
-    # torch 2.5+ — use latest
-    pip install -q peft trl bitsandbytes accelerate datasets transformers
-else
-    # torch 2.4.x — pin to last known-good versions
-    pip install -q \
-        'transformers==4.46.3' \
-        'peft==0.13.2' \
-        'trl==0.11.4' \
-        'bitsandbytes==0.44.1' \
-        'accelerate==0.34.2' \
-        'datasets==3.0.1'
-fi
-
+echo "Installing Unsloth + deps..."
+# Let pip resolve all versions — unsloth manages its own transformers/tokenizers constraints
+pip install -q unsloth trl peft accelerate bitsandbytes datasets
 echo "Deps installed."
 
 # ── Train ─────────────────────────────────────────────────────────────────────
@@ -52,15 +44,31 @@ echo "========================================"
 
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
-python /root/train_lora.py \
-    --model_id       "$MODEL_ID" \
-    --train_file     "$TRAIN_FILE" \
-    --val_file       "$VAL_FILE" \
-    --output_dir     "$OUTPUT_DIR" \
-    --epochs         "$EPOCHS" \
-    --batch_size     "$BATCH_SIZE" \
-    --grad_accum     "$GRAD_ACCUM" \
-    --max_seq_length "$MAX_SEQ_LEN"
+if [ "$USE_KL" = "1" ]; then
+    echo "Running Phase 14 KL distribution-loss training..."
+    python /root/train_lora_kl.py \
+        --model-id        "$MODEL_ID" \
+        --train-file      "$TRAIN_FILE" \
+        --val-file        "$VAL_FILE" \
+        --aggregated-file "$AGGREGATED_FILE" \
+        --output-dir      "$OUTPUT_DIR" \
+        --epochs          "$EPOCHS" \
+        --batch-size      "$BATCH_SIZE" \
+        --grad-accum      "$GRAD_ACCUM" \
+        --max-seq-len     "$MAX_SEQ_LEN" \
+        --kl-weight       "$KL_WEIGHT"
+else
+    echo "Running Phase 13 CE training (Unsloth)..."
+    python /root/train_lora_unsloth.py \
+        --model_id        "$MODEL_ID" \
+        --train_file      "$TRAIN_FILE" \
+        --val_file        "$VAL_FILE" \
+        --output_dir      "$OUTPUT_DIR" \
+        --epochs          "$EPOCHS" \
+        --batch_size      "$BATCH_SIZE" \
+        --grad_accum      "$GRAD_ACCUM" \
+        --max_seq_length  "$MAX_SEQ_LEN"
+fi
 
 echo ""
 echo "Training complete. Adapter at: $OUTPUT_DIR"
@@ -77,10 +85,28 @@ python /root/run_eval.py \
     --model_id "$MODEL_ID" \
     --out_file /root/eval_results.json
 
+# ── Phase 15 (batch rollout) — only after KL training ────────────────────────
+if [ "$USE_KL" = "1" ]; then
+    echo ""
+    echo "========================================"
+    echo " PHASE 3: TRAJECTORY ROLLOUT (Phase 15)"
+    echo "========================================"
+    python /root/simulation_rollout.py \
+        --backend  unsloth \
+        --adapter  "$OUTPUT_DIR" \
+        --val-file "$VAL_FILE" \
+        --batch \
+        --steps   15 \
+        --samples  3 \
+        --out-file /root/rollout_results.json
+    echo "Rollout complete. Results at /root/rollout_results.json"
+fi
+
 echo ""
 echo "========================================"
-echo " DONE. Results at /root/eval_results.json"
+echo " DONE."
 echo " Download with:"
 echo "   scp -P <PORT> -i <KEY> root@<IP>:/root/eval_results.json ."
-echo "   scp -P <PORT> -i <KEY> -r root@<IP>:/root/lora_adapter ."
+echo "   scp -P <PORT> -i <KEY> root@<IP>:/root/rollout_results.json ."
+echo "   scp -P <PORT> -i <KEY> -r root@<IP>:$OUTPUT_DIR ."
 echo "========================================"
