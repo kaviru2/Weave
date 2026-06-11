@@ -29,10 +29,13 @@ Weave's research questions:
 > bug detection than point-prediction models. Nobody has done this — it is a direct
 > consequence of concurrent execution being nondeterministic.
 
-Phases 1–13 complete. Phase 13 fine-tuned Qwen2.5-Coder-7B via Unsloth on RTX 4000 Ada,
-achieving 36.2% accuracy on the GoKer held-out test set (first clean OOD result).
-Pending: Qwen 7B zero-shot baseline on GoKer, Gemini zero-shot on GoKer.
-Next: Phase 14 distribution-loss training (KL vs empirical distributions).
+Phases 1–13 complete. Phase 14 KL distribution-loss training currently running on RunPod
+(RTX 4000 Ada). Phase 15 rollout script written and runs automatically after Phase 14.
+
+Key results so far: fine-tuned 7B 36.2% > Gemini Flash zero-shot 34.8% > 7B zero-shot 28.6%
+on GoKer held-out. Fine-tuning on 945 hand-crafted examples beats large model zero-shot on
+real-world concurrent bugs.
+
 See STATUS.md for current state and immediate next steps.
 
 ---

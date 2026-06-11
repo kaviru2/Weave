@@ -4,10 +4,11 @@
 
 ## Current State
 
-**Phase 13 complete. All pending baselines complete.** Qwen2.5-Coder-7B fine-tuned (36.2%
-GoKer OOD), zero-shot baseline measured (0.0%), Gemini GoKer eval running locally.
-7B adapter uploaded to HuggingFace. **Next:** Phase 14 distribution-loss training (KL vs
-empirical distributions).
+**Phase 14 KL training IN PROGRESS** on RTX 4000 Ada (pod `weave p14515`,
+`157.157.221.29:22206`, key `~/.ssh/id_runpod`). Estimated ~4h 50min total, ~$1.30.
+Phase 15 rollout script written and will auto-run on the same pod after training.
+
+**Gemini GoKer baselines:** Flash done (34.8%). Pro running locally with `--no-thinking`.
 
 ---
 
@@ -16,12 +17,17 @@ empirical distributions).
 | Model | Dataset | Accuracy | Notes |
 |-------|---------|----------|-------|
 | Gemini (zero-shot, Phase 4) | in-distribution | 56.0% | Large model, no fine-tuning |
-| Qwen2.5-Coder-1.5B (zero-shot) | in-distribution | **29.8%** | Corrected — was 0.0% due to markdown-fence parsing bug |
-| Qwen2.5-Coder-1.5B (fine-tuned, Phase 12) | in-distribution | 40.2% | After truncation bug fix (+10.4pp over zero-shot) |
-| **Qwen2.5-Coder-7B (fine-tuned, Phase 13)** | **GoKer held-out** | **36.2%** | **First clean OOD result (+7.6pp over zero-shot)** |
-| Qwen2.5-Coder-7B (zero-shot) | GoKer held-out | **28.6%** | Corrected — was 0.0% due to markdown-fence parsing bug |
-| Gemini 3.5 Flash (zero-shot, thinking) | GoKer held-out | pending | Running locally |
-| Gemini 3.1 Pro (zero-shot, thinking) | GoKer held-out | pending | Running locally after Flash |
+| Qwen2.5-Coder-1.5B (zero-shot) | in-distribution | 29.8% | Corrected from 0.0% (markdown-fence bug) |
+| Qwen2.5-Coder-1.5B (fine-tuned, Phase 12) | in-distribution | 40.2% | After truncation bug fix |
+| **Qwen2.5-Coder-7B (zero-shot)** | GoKer held-out | **28.6%** | Corrected from 0.0% (markdown-fence bug) |
+| **Gemini 3.5 Flash (zero-shot, thinking=auto)** | **GoKer held-out** | **34.8%** | Beats 7B zero-shot, below fine-tuned |
+| **Qwen2.5-Coder-7B (fine-tuned, Phase 13)** | **GoKer held-out** | **36.2%** | **Best OOD result — fine-tuning beats Gemini Flash** |
+| Gemini 3.1 Pro (zero-shot, no thinking) | GoKer held-out | pending | Running locally |
+| **Qwen2.5-Coder-7B KL-trained (Phase 14)** | GoKer held-out | pending | Training now |
+
+**Key comparison:** Fine-tuned 7B (36.2%) > Gemini Flash zero-shot (34.8%) > 7B zero-shot (28.6%).
+Training on 945 hand-crafted trace examples generalises better to real-world bugs than a large
+general model zero-shot.
 
 **Distribution learning results (Phase 7–8):**
 
@@ -50,31 +56,43 @@ empirical distributions).
 - [x] Phase 10 — QLoRA Fine-tuning (had truncation bug)
 - [x] Phase 11 — Dataset Expansion II (+38 gen + 66 GoKer = 130 programs total)
 - [x] Phase 12 — Truncation fix + retrain on A40 (40.2% in-dist accuracy)
-- [x] Phase 13 — GoKer held-out split + Unsloth 7B training (36.2% GoKer accuracy)
-- [ ] Phase 14 — Distribution-loss training (KL vs empirical distributions)
-- [ ] Phase 15 — Autoregressive rollout (`eval/simulation_rollout.py`)
+- [x] Phase 13 — GoKer held-out split + Unsloth 7B training (36.2% GoKer OOD)
+- [ ] **Phase 14 — KL distribution-loss training (RUNNING on RunPod)**
+- [ ] Phase 15 — Autoregressive rollout (script ready, runs after Phase 14)
 
 ---
 
 ## Immediate Next Steps
 
-### 1. Finish Gemini GoKer eval (in progress)
-- Gemini 3.5 Flash + 3.1 Pro running locally via `eval/gemini_zeroshot_goker.py`
-- Results save to `eval/results/gemini_goker_*.json` automatically
-- Update STATUS.md + README.md with final numbers once complete
+### 1. Wait for Phase 14 + 15 to finish (~4h 50min from start)
 
-### 2. Upload dataset to HuggingFace
-- GoKer-split JSONL in `dataset/output/kaggle_upload/` → `kavirubc/weave-bench`
+Monitor:
+```bash
+ssh root@157.157.221.29 -p 22206 -i ~/.ssh/id_runpod 'tail -5 /root/train.log'
+```
+
+Download when done:
+```bash
+scp -P 22206 -i ~/.ssh/id_runpod root@157.157.221.29:/root/eval_results.json eval/results/eval_p14_goker.json
+scp -P 22206 -i ~/.ssh/id_runpod root@157.157.221.29:/root/rollout_results.json eval/results/rollout_p15_goker.json
+scp -P 22206 -i ~/.ssh/id_runpod -r root@157.157.221.29:/root/lora_adapter_kl dataset/output/lora_adapter_kl
+```
+
+### 2. Collect Gemini Pro results
+- `eval/gemini_zeroshot_goker.py --models gemini-3.1-pro-preview --no-thinking` running locally
+- Update STATUS.md + README.md with final numbers
+
+### 3. Upload Phase 14 adapter to HuggingFace
+- `dataset/output/lora_adapter_kl/` → `kavirubc/weave-ccwm-qwen2.5-coder-7b-kl-lora`
+- Script: `uv run python scripts/upload_model_hf.py`
+
+### 4. Upload updated dataset to HuggingFace
+- GoKer-split JSONL with `program_id`/`split_percent` fields → `kavirubc/weave-bench`
 - Script: `uv run python scripts/upload_dataset_hf.py`
 
-### 3. Phase 14 — Distribution-loss training
-- Train the 7B model using KL divergence against empirical distributions in `aggregated.json`
-- Implement custom trainer with KL loss in `dataset/train_lora_kl.py`
-- This is the core research contribution distinguishing Weave from standard fine-tuning
-
-### 4. Phase 15 — Autoregressive rollout
-- Multi-step trajectory simulation on GoKer programs
-- Measure trajectory divergence from ground truth
+### 5. Merge PR #13 and open Phase 14 PR
+- PR #13 covers Phases 13–15 (branch `phase-13-unsloth-7b`)
+- Merge after training results are confirmed
 
 ---
 
@@ -83,22 +101,25 @@ empirical distributions).
 | Artifact | Location |
 |----------|----------|
 | LoRA adapter (Phase 12, 1.5B) | `dataset/output/lora_adapter_v2/` |
-| **LoRA adapter (Phase 13, 7B)** | `dataset/output/lora_adapter_v3/` (154MB) |
-| Eval results (1.5B fine-tuned) | `eval/results/eval_results_runpod.json` (40.2%) |
-| **Eval results (7B fine-tuned, GoKer)** | `eval/results/eval_results_runpod_7b.json` (36.2%) |
-| Eval results (1.5B zero-shot) | `eval/results/eval_results_zeroshot.json` (0.0%) |
-| **Eval results (7B zero-shot, GoKer)** | `eval/results/eval_zeroshot_7b_goker.json` (0.0%) |
-| HF model (1.5B) | https://huggingface.co/kavirubc/weave-ccwm-qwen2.5-coder-1.5b-lora |
-| **HF model (7B)** | https://huggingface.co/kavirubc/weave-ccwm-qwen2.5-coder-7b-lora |
+| LoRA adapter (Phase 13, 7B CE) | `dataset/output/lora_adapter_v3/` (154MB) |
+| **LoRA adapter (Phase 14, 7B KL)** | `dataset/output/lora_adapter_kl/` (pending download) |
+| Eval results (7B fine-tuned CE, GoKer) | `eval/results/eval_results_runpod_7b.json` (36.2%) |
+| **Eval results (Gemini Flash, GoKer)** | `eval/results/gemini_goker_gemini-3_5-flash_thinking-1.json` (34.8%) |
+| Eval results (7B zero-shot, GoKer) | `eval/results/eval_zeroshot_7b_goker.json` (28.6%) |
+| Eval results (1.5B fine-tuned, in-dist) | `eval/results/eval_results_runpod.json` (40.2%) |
+| HF model (1.5B CE) | https://huggingface.co/kavirubc/weave-ccwm-qwen2.5-coder-1.5b-lora |
+| HF model (7B CE, Phase 13) | https://huggingface.co/kavirubc/weave-ccwm-qwen2.5-coder-7b-lora |
 | HF dataset | https://huggingface.co/datasets/kavirubc/weave-bench |
 
 ---
 
 ## Compute
 
-**RunPod** is the primary GPU compute. Deploy: `RUNPOD_IP=<ip> RUNPOD_PORT=<port> bash scripts/runpod_deploy.sh`
+**RunPod** is the primary GPU compute.
 
-**GPU guidance:**
-- RTX 4000 Ada (20GB, ~$0.76/hr) — 7B QLoRA via Unsloth (Phase 13 used this)
-- A40 (48GB, ~$1.28/hr) — used for Phase 12 (1.5B)
+**Phase 14 (current):** `USE_KL=1 RUNPOD_IP=<ip> RUNPOD_PORT=<port> RUNPOD_KEY=~/.ssh/id_runpod bash scripts/runpod_deploy.sh`
+
+**GPU guidance (current pricing):**
+- RTX 4000 Ada (20GB, ~$0.27/hr) — 7B QLoRA via Unsloth, proven for Phase 13/14
+- A40 (48GB, ~$0.44/hr) — used for Phase 12; good fallback if RTX 4000 Ada unavailable
 - SSH key: `~/.ssh/id_runpod`

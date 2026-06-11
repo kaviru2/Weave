@@ -35,7 +35,9 @@ detectable from partial traces — a formal consequence of the goroutine's state
 | Qwen2.5-Coder-1.5B zero-shot | in-distribution | event_type accuracy | 29.8% |
 | Qwen2.5-Coder-1.5B fine-tuned (Phase 12) | in-distribution | event_type accuracy | 40.2% |
 | Qwen2.5-Coder-7B zero-shot | GoKer held-out | event_type accuracy | 28.6% |
+| **Gemini 3.5 Flash zero-shot (thinking=auto)** | **GoKer held-out** | **event_type accuracy** | **34.8%** |
 | **Qwen2.5-Coder-7B fine-tuned (Phase 13)** | **GoKer held-out** | **event_type accuracy** | **36.2%** |
+| Qwen2.5-Coder-7B KL-trained (Phase 14) | GoKer held-out | event_type accuracy | pending |
 | Distribution prompting, no thinking (Phase 7) | in-distribution | ECE | 0.183 |
 | Distribution prompting, thinking=1024 (Phase 7) | in-distribution | ECE | **0.169** |
 | Point-prediction baseline ECE (Phase 4) | in-distribution | ECE | 0.205 |
@@ -46,10 +48,10 @@ detectable from partial traces — a formal consequence of the goroutine's state
 > — real-world concurrent bug programs never seen during training. This is the first clean
 > generalisation measurement on out-of-distribution concurrent programs.
 >
-> **Note on baselines:** Qwen 7B scores 28.6% zero-shot on GoKer — the base model partially
-> understands the format but wraps output in markdown fences and gets goroutine IDs wrong.
-> Fine-tuning lifts this to 36.2% (+7.6pp) on the same OOD test set. The 1.5B fine-tuned
-> result (40.2%) is in-distribution only and not directly comparable.
+> **Key comparison (GoKer held-out):** Fine-tuned 7B (36.2%) > Gemini 3.5 Flash zero-shot
+> (34.8%) > 7B zero-shot (28.6%). Training on 945 hand-crafted trace examples generalises
+> better to real-world concurrent bug programs than a large general model used zero-shot.
+> The 1.5B fine-tuned result (40.2%) is in-distribution only and not directly comparable.
 
 ---
 
@@ -195,9 +197,9 @@ weave/
 
 ## Limitations and Future Work
 
-- **Phase 14 — Distribution-loss training:** Train the 7B model with KL divergence against empirical next-event distributions (`aggregated.json`) instead of cross-entropy point prediction. This is the core research contribution and is not yet implemented.
-- **Phase 15 — Autoregressive rollout:** Multi-step trajectory simulation to measure trajectory divergence on GoKer programs.
-- Qwen2.5-Coder-7B zero-shot baseline on GoKer pending (in progress).
+- **Phase 14 — Distribution-loss training (in progress):** Training the 7B model with KL divergence against empirical next-event distributions (`aggregated.json`). Custom `KLTrainer` in `dataset/train_lora_kl.py`. Results pending.
+- **Phase 15 — Autoregressive rollout (script ready):** Multi-step trajectory simulation (`eval/simulation_rollout.py`) will run automatically after Phase 14 on the same pod.
+- Gemini 3.1 Pro zero-shot baseline on GoKer pending.
 - Ballerina extension: requires WSO2 conversation (strand-local state richer than goroutine scheduler events).
 
 ---
