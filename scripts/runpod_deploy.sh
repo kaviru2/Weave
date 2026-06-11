@@ -51,6 +51,7 @@ scp $SCP_OPTS \
     dataset/output/aggregated.json \
     dataset/train_lora_unsloth.py \
     dataset/train_lora_kl.py \
+    eval/simulation_rollout.py \
     scripts/run_eval.py \
     scripts/runpod_pod.sh \
     root@$RUNPOD_IP:/root/

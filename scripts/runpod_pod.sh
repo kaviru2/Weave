@@ -80,10 +80,28 @@ python /root/run_eval.py \
     --model_id "$MODEL_ID" \
     --out_file /root/eval_results.json
 
+# ── Phase 15 (batch rollout) — only after KL training ────────────────────────
+if [ "$USE_KL" = "1" ]; then
+    echo ""
+    echo "========================================"
+    echo " PHASE 3: TRAJECTORY ROLLOUT (Phase 15)"
+    echo "========================================"
+    python /root/simulation_rollout.py \
+        --backend  unsloth \
+        --adapter  "$OUTPUT_DIR" \
+        --val-file "$VAL_FILE" \
+        --batch \
+        --steps   15 \
+        --samples  3 \
+        --out-file /root/rollout_results.json
+    echo "Rollout complete. Results at /root/rollout_results.json"
+fi
+
 echo ""
 echo "========================================"
-echo " DONE. Results at /root/eval_results.json"
+echo " DONE."
 echo " Download with:"
 echo "   scp -P <PORT> -i <KEY> root@<IP>:/root/eval_results.json ."
-echo "   scp -P <PORT> -i <KEY> -r root@<IP>:/root/lora_adapter ."
+echo "   scp -P <PORT> -i <KEY> root@<IP>:/root/rollout_results.json ."
+echo "   scp -P <PORT> -i <KEY> -r root@<IP>:$OUTPUT_DIR ."
 echo "========================================"

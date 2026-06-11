@@ -1,32 +1,45 @@
 #!/usr/bin/env python3
 """
-eval/simulation_rollout.py
+eval/simulation_rollout.py — Phase 15
 
-Autoregressive trajectory simulator ("Dreamer") that evaluates the model's capacity
-to simulate concurrent Go execution traces without violating Go scheduler invariants.
+Autoregressive trajectory simulator ("Dreamer") for Weave CCWM evaluation.
 
-Methodology:
-  1. Loads a program and a starting trace prefix (e.g., 25% or 50% split).
-  2. Initializes a symbolic scheduler FSM to track goroutine states (runnable, running, blocked, dead).
-  3. Autoregressively queries the model for next-event transitions using temperature sampling.
-  4. At each step, checks if the model's action violates Go scheduler invariants.
-  5. Measures "Survival Steps" (number of valid simulation steps before first invariant violation).
-
-Run:
+Single-program mode (local / Gemini / LoRA adapter):
   uv run python eval/simulation_rollout.py --program 01_simple_channel --split 25 --steps 10 --temp 0.7
   uv run python eval/simulation_rollout.py --program 01_simple_channel --split 25 --steps 10 --backend lora
+
+Batch mode (RunPod, after Phase 14 training):
+  python /root/simulation_rollout.py --backend unsloth --batch --steps 15 --samples 3
+
+Batch mode evaluates all unique GoKer programs from val_point_dups.jsonl and reports:
+  - Outcome consistency: deadlock programs accumulate GoBlock, success stays balanced
+  - Distribution spread: KL-trained model shows higher per-step entropy than CE model
+  - Survival steps: how many valid FSM steps before first scheduler invariant violation
+
+Two backends for on-pod use:
+  unsloth   — loads Unsloth 7B adapter (Phase 14: /root/lora_adapter_kl,
+                                        Phase 13: /root/lora_adapter)
+  lora      — PEFT + standard transformers (1.5B, local CPU)
+  gemini    — Gemini API (local only)
 """
 
+from __future__ import annotations
+
+import math
 import os
 import re
 import sys
 import json
-import random
 import argparse
 import logging
+from collections import Counter, defaultdict
 from typing import Any, Dict, List, Tuple, Optional
 
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 # Gemini imports — only used when --backend gemini (default)
 try:
@@ -36,15 +49,17 @@ try:
 except ImportError:
     _GEMINI_AVAILABLE = False
 
-# Load environment
-load_dotenv()
-
 # Setup logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATASET_DIR = os.path.join(BASE_DIR, "dataset", "output")
 RESULTS_DIR = os.path.join(BASE_DIR, "eval", "results")
+
+# On RunPod these live in /root/
+_RUNPOD_VAL  = "/root/val_point_dups.jsonl"
+_RUNPOD_KL   = "/root/lora_adapter_kl"
+_RUNPOD_CE   = "/root/lora_adapter"
 
 ALL_EVENT_TYPES = ["GoBlock", "GoCreate", "GoEnd", "GoSched", "GoStart", "GoUnblock"]
 
@@ -54,6 +69,10 @@ _lora_tokenizer = None
 _LORA_ADAPTER   = os.path.join(BASE_DIR, "dataset", "output", "lora_adapter")
 _LORA_BASE      = "Qwen/Qwen2.5-Coder-1.5B-Instruct"
 _LORA_MAX_TOKENS = 512   # CPU constraint; bump to 1024 if running on GPU
+
+# ── Unsloth backend state (lazy-loaded) ────────────────────────────────────
+_unsloth_model     = None
+_unsloth_tokenizer = None
 
 
 def _load_lora_model():
@@ -71,13 +90,31 @@ def _load_lora_model():
     _lora_tokenizer = AutoTokenizer.from_pretrained(_LORA_BASE, trust_remote_code=True)
     base = AutoModelForCausalLM.from_pretrained(
         _LORA_BASE,
-        dtype=torch.float16,   # newer transformers: dtype not torch_dtype
+        dtype=torch.float16,
         trust_remote_code=True,
     )
     _lora_model = PeftModel.from_pretrained(base, _LORA_ADAPTER)
     _lora_model = _lora_model.to(torch.device("cpu"))
     _lora_model.eval()
     logging.info("LoRA model ready.")
+
+
+def _load_unsloth_model(adapter_path: str) -> None:
+    """Lazy-load a 7B Unsloth adapter. adapter_path is used as the model name (already merged)."""
+    global _unsloth_model, _unsloth_tokenizer
+    if _unsloth_model is not None:
+        return
+
+    logging.info(f"Loading Unsloth adapter: {adapter_path}")
+    from unsloth import FastLanguageModel
+    _unsloth_model, _unsloth_tokenizer = FastLanguageModel.from_pretrained(
+        model_name=adapter_path,
+        max_seq_length=4096,
+        load_in_4bit=True,
+        dtype=None,
+    )
+    FastLanguageModel.for_inference(_unsloth_model)
+    logging.info("Unsloth model ready.")
 
 
 def _smart_truncate_for_lora(prompt_messages, max_tokens=_LORA_MAX_TOKENS):
@@ -292,6 +329,32 @@ def call_lora_model(prompt_messages: List[Dict[str, str]], temp: float) -> str:
     return _lora_tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
 
 
+def call_unsloth_model(prompt_messages: List[Dict[str, str]], temp: float) -> str:
+    """Queries the Unsloth 7B adapter (4-bit CUDA) for next event transition."""
+    import torch
+    if _unsloth_model is None:
+        raise RuntimeError("Unsloth model not loaded — call _load_unsloth_model() first")
+
+    prompt = _unsloth_tokenizer.apply_chat_template(
+        prompt_messages, tokenize=False, add_generation_prompt=True,
+    )
+    inputs = _unsloth_tokenizer(
+        prompt, return_tensors="pt", truncation=True, max_length=4000,
+    ).to("cuda")
+
+    do_sample = temp > 0.0
+    with torch.no_grad():
+        out = _unsloth_model.generate(
+            **inputs,
+            max_new_tokens=60,
+            do_sample=do_sample,
+            temperature=temp if do_sample else 1.0,
+            pad_token_id=_unsloth_tokenizer.eos_token_id,
+        )
+    new_tokens = out[0][inputs["input_ids"].shape[1]:]
+    return _unsloth_tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
+
+
 def parse_response(raw: str) -> Tuple[Optional[str], Optional[int], Optional[str]]:
     """Cleans markdown syntax and decodes predicted event type and goroutine ID."""
     text = raw.strip()
@@ -324,6 +387,23 @@ def load_initial_trajectory(program_id: str, split_percent: int) -> Dict[str, An
     raise FileNotFoundError(f"Could not find run file for {program_id} split {split_percent}")
 
 
+def _extract_outcome_from_source(program_source: str) -> str:
+    m = re.search(r"outcome:\s*(\w+)", program_source)
+    return m.group(1) if m else "unknown"
+
+
+def _entropy(counts: Counter) -> float:
+    total = sum(counts.values())
+    if not total:
+        return 0.0
+    h = 0.0
+    for c in counts.values():
+        if c > 0:
+            p = c / total
+            h -= p * math.log2(p)
+    return h
+
+
 def run_simulation(
     program_id: str,
     split_percent: int,
@@ -331,6 +411,7 @@ def run_simulation(
     temp: float,
     model_name: str,
     backend: str = "gemini",
+    unsloth_adapter: str = _RUNPOD_KL,
 ) -> Dict[str, Any]:
     """Executes the simulation loop, checking FSM states and survival metrics."""
     client = None
@@ -344,7 +425,9 @@ def run_simulation(
             sys.exit(1)
         client = genai.Client(api_key=api_key)
     elif backend == "lora":
-        _load_lora_model()  # warm up before the loop
+        _load_lora_model()
+    elif backend == "unsloth":
+        _load_unsloth_model(unsloth_adapter)
     else:
         logging.error(f"Unknown backend: {backend}")
         sys.exit(1)
@@ -376,12 +459,14 @@ def run_simulation(
             if backend == "gemini":
                 raw_resp = call_gemini(client, model_name, prompt_str, temp)
             else:
-                # LoRA backend: wrap prompt into chat messages for smart truncation
                 prompt_messages = [
-                    {"role": "system",    "content": "You are a code execution simulator."},
-                    {"role": "user",      "content": prompt_str},
+                    {"role": "system", "content": "You are a code execution simulator."},
+                    {"role": "user",   "content": prompt_str},
                 ]
-                raw_resp = call_lora_model(prompt_messages, temp)
+                if backend == "unsloth":
+                    raw_resp = call_unsloth_model(prompt_messages, temp)
+                else:
+                    raw_resp = call_lora_model(prompt_messages, temp)
             event_type, gid, reasoning = parse_response(raw_resp)
         except Exception as e:
             logging.error(f"Backend call failed at step {step}: {e}")
@@ -429,46 +514,265 @@ def run_simulation(
         logging.info(f"Step {step} - Success: {event_type} for G{gid}. FSM: {fsm.states}")
 
     rollout_outcome = {
-        "program_id":       program_id,
-        "split_percent":    split_percent,
-        "backend":          backend,
-        "model_name":       model_name if backend == "gemini" else _LORA_BASE,
-        "temperature":      temp,
-        "max_steps":        max_steps,
-        "survival_steps":   survival_steps,
+        "program_id":         program_id,
+        "split_percent":      split_percent,
+        "backend":            backend,
+        "model_name":         model_name if backend == "gemini" else (
+                                  unsloth_adapter if backend == "unsloth" else _LORA_BASE
+                              ),
+        "temperature":        temp,
+        "max_steps":          max_steps,
+        "survival_steps":     survival_steps,
         "violation_occurred": violation_occurred,
-        "failure_reason":   failure_reason,
-        "rollout_steps":    steps,
+        "failure_reason":     failure_reason,
+        "rollout_steps":      steps,
     }
     return rollout_outcome
 
 
+# ── Batch mode (RunPod Phase 15) ──────────────────────────────────────────────
+
+def run_batch(
+    val_file: str,
+    backend: str,
+    steps: int,
+    samples: int,
+    temp: float,
+    unsloth_adapter: str,
+    out_file: str,
+) -> None:
+    """Batch rollout: all unique GoKer programs → outcome consistency + entropy report."""
+    if backend == "unsloth":
+        _load_unsloth_model(unsloth_adapter)
+    elif backend == "lora":
+        _load_lora_model()
+
+    with open(val_file) as f:
+        all_ex = [json.loads(l) for l in f if l.strip()]
+
+    # One example per program — prefer split=25
+    by_program: Dict[str, dict] = {}
+    for ex in all_ex:
+        pid = ex.get("program_id", "")
+        sp  = ex.get("split_percent", 99)
+        if pid not in by_program or sp < by_program[pid]["split_percent"]:
+            by_program[pid] = ex
+
+    programs = list(by_program.values())
+    print(f"\nBatch rollout: {len(programs)} programs  steps={steps}  samples={samples}  backend={backend}")
+    sep = "=" * 72
+    print(sep)
+    print(f"  {'Program':<40} {'Outcome':<10} {'Top event':<14} {'Entropy':>7}")
+    print(sep)
+
+    outcome_stats: Dict[str, list] = defaultdict(list)
+    results = []
+
+    for ex in programs:
+        pid      = ex.get("program_id", "unknown")
+        messages = ex["messages"]
+
+        # Extract program source from the user message
+        prog_src = ""
+        for m in messages:
+            c = m.get("content", "")
+            if "<program>" in c:
+                s = c.find("<program>") + len("<program>")
+                e = c.find("</program>")
+                prog_src = c[s:e].strip()
+                break
+        outcome = _extract_outcome_from_source(prog_src)
+
+        # Reconstruct partial trace for FSM init
+        try:
+            # grab last state snapshot from the user message
+            for m in messages:
+                c = m.get("content", "")
+                if "<current_state>" in c:
+                    s = c.find("<current_state>") + len("<current_state>")
+                    e = c.find("</current_state>")
+                    last_snap = json.loads(c[s:e].strip())
+                    break
+            fsm_init = last_snap.get("goroutines", {})
+        except Exception:
+            fsm_init = {}
+
+        all_ets: list[str] = []
+        total_survival = 0
+
+        for _ in range(samples):
+            t = temp if samples > 1 else 0.0
+            prompt_messages = [
+                m for m in messages if m.get("role") in ("system", "user")
+            ]
+            partial_trace_for_sim: list = []
+            # We don't have the full run file on pod; use FSM-only simulation
+            fsm = SchedulerFSM(fsm_init)
+            sim_steps = []
+            survival = 0
+
+            for step_i in range(steps):
+                prompt_str = build_prompt(prog_src, partial_trace_for_sim or [last_snap])
+                try:
+                    if backend == "unsloth":
+                        raw = call_unsloth_model(
+                            [{"role": "system", "content": "You are a code execution simulator."},
+                             {"role": "user",   "content": prompt_str}], t,
+                        )
+                    elif backend == "lora":
+                        raw = call_lora_model(
+                            [{"role": "system", "content": "You are a code execution simulator."},
+                             {"role": "user",   "content": prompt_str}], t,
+                        )
+                    else:
+                        raw = ""
+                except Exception as err:
+                    logging.warning(f"{pid} step {step_i}: {err}")
+                    break
+
+                et, gid, _ = parse_response(raw)
+                if et is None or gid is None:
+                    break
+
+                valid, _ = fsm.check_and_apply(et, gid)
+                all_ets.append(et)
+                if valid:
+                    survival += 1
+                    snap = {
+                        "event_id": step_i + 1,
+                        "timestamp_ns": step_i * 1000,
+                        "event_type": et, "goroutine_id": gid,
+                        "goroutines": fsm.get_snapshot(), "channels": {}, "mutexes": {},
+                    }
+                    partial_trace_for_sim.append(snap)
+                else:
+                    break
+
+            total_survival += survival
+
+        counts = Counter(all_ets)
+        total  = sum(counts.values())
+        top_et = counts.most_common(1)[0][0] if counts else "?"
+        top_p  = counts[top_et] / total if total else 0
+        h      = _entropy(counts)
+        avg_surv = total_survival / samples if samples else 0
+
+        outcome_stats[outcome].append({"counts": counts, "h": h, "surv": avg_surv})
+        print(f"  {pid:<40} {outcome:<10} {top_et:<10} {top_p:.0%}  H={h:.2f}b  surv={avg_surv:.1f}")
+
+        results.append({
+            "program_id": pid, "outcome": outcome,
+            "event_counts": dict(counts),
+            "top_event": top_et, "top_event_pct": round(top_p, 4),
+            "entropy_bits": round(h, 4),
+            "mean_survival_steps": round(avg_surv, 2),
+            "steps": steps, "samples": samples,
+        })
+
+    # Summary by outcome
+    print(f"\n{sep}")
+    print("  Rollout distribution by program outcome")
+    print(sep)
+    for outcome in ["deadlock", "leak", "success", "race", "unknown"]:
+        rows = outcome_stats.get(outcome)
+        if not rows:
+            continue
+        combined: Counter = Counter()
+        for r in rows:
+            combined.update(r["counts"])
+        total_c = sum(combined.values())
+        h_avg = sum(r["h"] for r in rows) / len(rows)
+        surv_avg = sum(r["surv"] for r in rows) / len(rows)
+        pcts = {et: combined.get(et, 0) / max(total_c, 1) for et in ALL_EVENT_TYPES}
+        top3 = sorted(pcts.items(), key=lambda x: -x[1])[:3]
+        top3s = "  ".join(f"{et}={p:.0%}" for et, p in top3)
+        print(f"  {outcome:<10} (n={len(rows)})  {top3s}")
+        print(f"             H_avg={h_avg:.2f}b  survival_avg={surv_avg:.1f}")
+
+    print(f"\n  INTERPRETATION:")
+    print(f"  - Deadlock programs → expect GoBlock dominant, GoUnblock ≈ 0")
+    print(f"  - KL-trained model → higher entropy (more distribution spread)")
+    print(f"  - High survival steps → model respects scheduler invariants")
+
+    summary = {
+        "adapter": unsloth_adapter if backend == "unsloth" else backend,
+        "backend": backend,
+        "steps": steps,
+        "samples": samples,
+        "n_programs": len(programs),
+        "results": results,
+        "outcome_summary": {
+            outcome: {
+                "n": len(rows),
+                "mean_entropy": round(sum(r["h"] for r in rows) / len(rows), 4),
+                "mean_survival_steps": round(sum(r["surv"] for r in rows) / len(rows), 2),
+                "combined_dist": {
+                    et: round(
+                        sum(r["counts"].get(et, 0) for r in rows) /
+                        max(sum(sum(r["counts"].values()) for r in rows), 1), 4
+                    ) for et in ALL_EVENT_TYPES
+                },
+            }
+            for outcome, rows in outcome_stats.items()
+        },
+    }
+
+    os.makedirs(os.path.dirname(out_file), exist_ok=True)
+    with open(out_file, "w") as f:
+        json.dump(summary, f, indent=2)
+    print(f"\nSaved to {out_file}")
+
+
 def main():
-    parser = argparse.ArgumentParser(description="Weave Autoregressive Trajectory Simulator (Dreamer)")
-    parser.add_argument("--program", type=str, default="01_simple_channel", help="Program ID to run simulation on")
-    parser.add_argument("--split",   type=int, default=25, choices=[25, 50, 75], help="Trace prefix split percentage")
-    parser.add_argument("--steps",   type=int, default=10, help="Maximum simulation steps")
-    parser.add_argument("--temp",    type=float, default=0.7, help="LLM generation temperature")
-    parser.add_argument("--backend", type=str, default="gemini", choices=["gemini", "lora"],
-                        help="Backend model to use: 'gemini' (default) or 'lora' (fine-tuned local adapter)")
+    parser = argparse.ArgumentParser(description="Weave Autoregressive Trajectory Simulator (Phase 15)")
+    parser.add_argument("--program",  default="01_simple_channel")
+    parser.add_argument("--split",    type=int, default=25, choices=[25, 50, 75])
+    parser.add_argument("--steps",    type=int, default=15)
+    parser.add_argument("--temp",     type=float, default=0.7)
+    parser.add_argument("--samples",  type=int, default=3,
+                        help="Sampled rollouts per program in batch mode")
+    parser.add_argument("--backend",  default="gemini",
+                        choices=["gemini", "lora", "unsloth"])
+    parser.add_argument("--adapter",  default=_RUNPOD_KL,
+                        help="Unsloth adapter path (for --backend unsloth)")
+    parser.add_argument("--val-file", default=_RUNPOD_VAL,
+                        help="Val JSONL for batch mode")
+    parser.add_argument("--out-file", default="/root/rollout_results.json",
+                        help="Output path for batch results")
+    parser.add_argument("--batch", action="store_true",
+                        help="Batch mode: run all programs in val-file")
     args = parser.parse_args()
 
-    model_name = os.getenv("MODEL", "gemini-3.5-flash")
+    if args.batch:
+        run_batch(
+            val_file=args.val_file,
+            backend=args.backend,
+            steps=args.steps,
+            samples=args.samples,
+            temp=args.temp,
+            unsloth_adapter=args.adapter,
+            out_file=args.out_file,
+        )
+        return
 
+    # Single-program mode (original behaviour)
+    model_name = os.getenv("MODEL", "gemini-3.5-flash")
     logging.info(
         f"Starting rollout on {args.program} at {args.split}% split "
         f"(backend={args.backend}, temp={args.temp})"
     )
 
     try:
-        result = run_simulation(args.program, args.split, args.steps, args.temp, model_name, backend=args.backend)
+        result = run_simulation(
+            args.program, args.split, args.steps, args.temp, model_name,
+            backend=args.backend, unsloth_adapter=args.adapter,
+        )
     except Exception as e:
         logging.error(f"Simulation crashed: {e}")
         sys.exit(1)
 
-    # Output results to disk — include backend in filename to avoid collisions
     os.makedirs(RESULTS_DIR, exist_ok=True)
-    suffix = f"_split{args.split}_{args.backend}.json"
+    suffix   = f"_split{args.split}_{args.backend}.json"
     out_path = os.path.join(RESULTS_DIR, f"simulation_{args.program}{suffix}")
     with open(out_path, "w") as f:
         json.dump(result, f, indent=2)
