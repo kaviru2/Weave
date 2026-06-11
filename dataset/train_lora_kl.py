@@ -279,7 +279,7 @@ class KLTrainer(Trainer):
         #   offset=0 → logit_pos = pos - 1   (predicts first token, single-token case)
         #   offset=1 → logit_pos = pos        (predicts second token, multi-token case)
         kl_ids = self.kl_ids_cpu.to(logits.device)
-        kl_accum = torch.zeros(1, device=logits.device)
+        kl_accum = torch.zeros((), device=logits.device)  # scalar shape [], not [1]
         n_valid = 0
 
         for b in range(logits.size(0)):
@@ -302,7 +302,7 @@ class KLTrainer(Trainer):
         else:
             total_loss = ce_loss
 
-        return (total_loss, outputs) if return_outputs else total_loss
+        return (total_loss.squeeze(), outputs) if return_outputs else total_loss.squeeze()
 
 
 # ── main ──────────────────────────────────────────────────────────────────────
