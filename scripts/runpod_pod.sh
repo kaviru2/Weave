@@ -7,15 +7,19 @@ set -e
 MODEL_ID="${MODEL_ID:-Qwen/Qwen2.5-Coder-7B-Instruct}"
 TRAIN_FILE="${TRAIN_FILE:-/root/train_point_dups.jsonl}"
 VAL_FILE="${VAL_FILE:-/root/val_point_dups.jsonl}"
+AGGREGATED_FILE="${AGGREGATED_FILE:-/root/aggregated.json}"
 OUTPUT_DIR="${OUTPUT_DIR:-/root/lora_adapter}"
 EPOCHS="${EPOCHS:-3}"
 BATCH_SIZE="${BATCH_SIZE:-1}"
 GRAD_ACCUM="${GRAD_ACCUM:-8}"
 MAX_SEQ_LEN="${MAX_SEQ_LEN:-4096}"
+KL_WEIGHT="${KL_WEIGHT:-1.0}"
+USE_KL="${USE_KL:-0}"   # set to "1" to run Phase 14 KL training
 
 echo "========================================"
 echo " Weave RunPod Training Script (Unsloth)"
 echo " Model:      $MODEL_ID"
+echo " Mode:       $([ "$USE_KL" = "1" ] && echo "Phase 14 KL loss (kl_weight=$KL_WEIGHT)" || echo "Phase 13 CE loss")"
 echo " Epochs:     $EPOCHS | Batch: $BATCH_SIZE | GradAccum: $GRAD_ACCUM | Seq: $MAX_SEQ_LEN"
 echo " GPU:        $(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader 2>/dev/null || echo unknown)"
 echo "========================================"
@@ -35,15 +39,31 @@ echo "========================================"
 
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
-python /root/train_lora_unsloth.py \
-    --model_id        "$MODEL_ID" \
-    --train_file      "$TRAIN_FILE" \
-    --val_file        "$VAL_FILE" \
-    --output_dir      "$OUTPUT_DIR" \
-    --epochs          "$EPOCHS" \
-    --batch_size      "$BATCH_SIZE" \
-    --grad_accum      "$GRAD_ACCUM" \
-    --max_seq_length  "$MAX_SEQ_LEN"
+if [ "$USE_KL" = "1" ]; then
+    echo "Running Phase 14 KL distribution-loss training..."
+    python /root/train_lora_kl.py \
+        --model-id        "$MODEL_ID" \
+        --train-file      "$TRAIN_FILE" \
+        --val-file        "$VAL_FILE" \
+        --aggregated-file "$AGGREGATED_FILE" \
+        --output-dir      "$OUTPUT_DIR" \
+        --epochs          "$EPOCHS" \
+        --batch-size      "$BATCH_SIZE" \
+        --grad-accum      "$GRAD_ACCUM" \
+        --max-seq-len     "$MAX_SEQ_LEN" \
+        --kl-weight       "$KL_WEIGHT"
+else
+    echo "Running Phase 13 CE training (Unsloth)..."
+    python /root/train_lora_unsloth.py \
+        --model_id        "$MODEL_ID" \
+        --train_file      "$TRAIN_FILE" \
+        --val_file        "$VAL_FILE" \
+        --output_dir      "$OUTPUT_DIR" \
+        --epochs          "$EPOCHS" \
+        --batch_size      "$BATCH_SIZE" \
+        --grad_accum      "$GRAD_ACCUM" \
+        --max_seq_length  "$MAX_SEQ_LEN"
+fi
 
 echo ""
 echo "Training complete. Adapter at: $OUTPUT_DIR"

@@ -350,6 +350,8 @@ def main():
             point_msg = format_point_chat_message(source, partial_trace, next_evt)
             point_msg["concurrency_pattern"] = group["concurrency_pattern"]
             point_msg["nondeterminism"] = group["nondeterminism"]
+            point_msg["program_id"] = program_id
+            point_msg["split_percent"] = split_percent
             if is_train:
                 train_point_items.append(point_msg)
             else:

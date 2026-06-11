@@ -4,10 +4,10 @@
 
 ## Current State
 
-**Phase 13 complete.** Qwen2.5-Coder-7B fine-tuned on hand-crafted+generated programs,
-evaluated on GoKer held-out test set. Adapter saved locally and being uploaded to HF.
-**Next:** Qwen 7B zero-shot baseline (in progress on RunPod), Gemini zero-shot on GoKer,
-then Phase 14 distribution-loss training.
+**Phase 13 complete. All pending baselines complete.** Qwen2.5-Coder-7B fine-tuned (36.2%
+GoKer OOD), zero-shot baseline measured (0.0%), Gemini GoKer eval running locally.
+7B adapter uploaded to HuggingFace. **Next:** Phase 14 distribution-loss training (KL vs
+empirical distributions).
 
 ---
 
@@ -16,11 +16,12 @@ then Phase 14 distribution-loss training.
 | Model | Dataset | Accuracy | Notes |
 |-------|---------|----------|-------|
 | Gemini (zero-shot, Phase 4) | in-distribution | 56.0% | Large model, no fine-tuning |
-| Qwen2.5-Coder-1.5B (zero-shot) | in-distribution | 0.0% | Cannot parse task format |
-| Qwen2.5-Coder-1.5B (fine-tuned, Phase 12) | in-distribution | 40.2% | After truncation bug fix |
-| **Qwen2.5-Coder-7B (fine-tuned, Phase 13)** | **GoKer held-out** | **36.2%** | **First clean OOD result** |
-| Qwen2.5-Coder-7B (zero-shot) | GoKer held-out | pending | Running on RunPod |
-| Gemini (zero-shot on GoKer) | GoKer held-out | pending | Run locally via API |
+| Qwen2.5-Coder-1.5B (zero-shot) | in-distribution | **29.8%** | Corrected — was 0.0% due to markdown-fence parsing bug |
+| Qwen2.5-Coder-1.5B (fine-tuned, Phase 12) | in-distribution | 40.2% | After truncation bug fix (+10.4pp over zero-shot) |
+| **Qwen2.5-Coder-7B (fine-tuned, Phase 13)** | **GoKer held-out** | **36.2%** | **First clean OOD result (+7.6pp over zero-shot)** |
+| Qwen2.5-Coder-7B (zero-shot) | GoKer held-out | **28.6%** | Corrected — was 0.0% due to markdown-fence parsing bug |
+| Gemini 3.5 Flash (zero-shot, thinking) | GoKer held-out | pending | Running locally |
+| Gemini 3.1 Pro (zero-shot, thinking) | GoKer held-out | pending | Running locally after Flash |
 
 **Distribution learning results (Phase 7–8):**
 
@@ -57,14 +58,14 @@ then Phase 14 distribution-loss training.
 
 ## Immediate Next Steps
 
-### 1. Finish pending evals (in progress)
-- **Qwen 7B zero-shot on GoKer** — running on RunPod (eval_zeroshot_7b.py)
-- **Gemini zero-shot on GoKer** — run locally: `uv run python eval/dist_zero_shot.py` pointed at GoKer val set
+### 1. Finish Gemini GoKer eval (in progress)
+- Gemini 3.5 Flash + 3.1 Pro running locally via `eval/gemini_zeroshot_goker.py`
+- Results save to `eval/results/gemini_goker_*.json` automatically
+- Update STATUS.md + README.md with final numbers once complete
 
-### 2. Upload Phase 13 artifacts to HuggingFace
-- Adapter: `dataset/output/lora_adapter_v3/` → `kavirubc/weave-ccwm-qwen2.5-coder-7b-lora`
-- Dataset: `dataset/output/kaggle_upload/` (GoKer-split JSONL) → `kavirubc/weave-bench`
-- Script: `uv run python scripts/upload_model_hf.py --adapter dataset/output/lora_adapter_v3`
+### 2. Upload dataset to HuggingFace
+- GoKer-split JSONL in `dataset/output/kaggle_upload/` → `kavirubc/weave-bench`
+- Script: `uv run python scripts/upload_dataset_hf.py`
 
 ### 3. Phase 14 — Distribution-loss training
 - Train the 7B model using KL divergence against empirical distributions in `aggregated.json`
@@ -85,8 +86,10 @@ then Phase 14 distribution-loss training.
 | **LoRA adapter (Phase 13, 7B)** | `dataset/output/lora_adapter_v3/` (154MB) |
 | Eval results (1.5B fine-tuned) | `eval/results/eval_results_runpod.json` (40.2%) |
 | **Eval results (7B fine-tuned, GoKer)** | `eval/results/eval_results_runpod_7b.json` (36.2%) |
-| Eval results (zero-shot) | `eval/results/eval_results_zeroshot.json` (0.0%) |
+| Eval results (1.5B zero-shot) | `eval/results/eval_results_zeroshot.json` (0.0%) |
+| **Eval results (7B zero-shot, GoKer)** | `eval/results/eval_zeroshot_7b_goker.json` (0.0%) |
 | HF model (1.5B) | https://huggingface.co/kavirubc/weave-ccwm-qwen2.5-coder-1.5b-lora |
+| **HF model (7B)** | https://huggingface.co/kavirubc/weave-ccwm-qwen2.5-coder-7b-lora |
 | HF dataset | https://huggingface.co/datasets/kavirubc/weave-bench |
 
 ---

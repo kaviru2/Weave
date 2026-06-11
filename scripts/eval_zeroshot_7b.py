@@ -47,10 +47,22 @@ for i, ex in enumerate(examples):
                              pad_token_id=tokenizer.eos_token_id)
     pred = tokenizer.decode(out[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True).strip()
     gt_t = pred_t = None
-    try: gt_t   = json.loads(gt).get("event_type")
+    try: gt_t = json.loads(gt).get("event_type")
     except Exception: pass
-    try: pred_t = json.loads(pred).get("event_type")
+    # Strip markdown fences before parsing (base model wraps in ```json ... ```)
+    pred_text = pred
+    if pred_text.startswith("```"):
+        _, _, rest = pred_text.partition("\n")
+        pred_text = rest.rstrip("`").strip()
+    try: pred_t = json.loads(pred_text).get("event_type")
     except Exception: pass
+    if pred_t is None:
+        for s in range(len(pred_text)):
+            if pred_text[s] == "{":
+                for e in range(len(pred_text), s, -1):
+                    try: pred_t = json.loads(pred_text[s:e]).get("event_type"); break
+                    except Exception: pass
+            if pred_t: break
     match = bool(gt_t and pred_t and gt_t == pred_t)
     if match: correct += 1
     total += 1

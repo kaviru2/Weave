@@ -32,8 +32,9 @@ detectable from partial traces — a formal consequence of the goroutine's state
 | Experiment | Dataset | Metric | Value |
 |-----------|---------|--------|-------|
 | Gemini zero-shot (Phase 4) | in-distribution | event_type accuracy | 56.0% |
-| Qwen2.5-Coder-1.5B zero-shot | in-distribution | event_type accuracy | 0.0% |
+| Qwen2.5-Coder-1.5B zero-shot | in-distribution | event_type accuracy | 29.8% |
 | Qwen2.5-Coder-1.5B fine-tuned (Phase 12) | in-distribution | event_type accuracy | 40.2% |
+| Qwen2.5-Coder-7B zero-shot | GoKer held-out | event_type accuracy | 28.6% |
 | **Qwen2.5-Coder-7B fine-tuned (Phase 13)** | **GoKer held-out** | **event_type accuracy** | **36.2%** |
 | Distribution prompting, no thinking (Phase 7) | in-distribution | ECE | 0.183 |
 | Distribution prompting, thinking=1024 (Phase 7) | in-distribution | ECE | **0.169** |
@@ -45,9 +46,10 @@ detectable from partial traces — a formal consequence of the goroutine's state
 > — real-world concurrent bug programs never seen during training. This is the first clean
 > generalisation measurement on out-of-distribution concurrent programs.
 >
-> **Note on baselines:** Qwen2.5-Coder-1.5B zero-shot scores 0.0% — the base model cannot
-> parse the task format without fine-tuning. The 1.5B fine-tuned result (40.2%) is evaluated
-> in-distribution; the 7B fine-tuned result (36.2%) is on the held-out GoKer test set.
+> **Note on baselines:** Qwen 7B scores 28.6% zero-shot on GoKer — the base model partially
+> understands the format but wraps output in markdown fences and gets goroutine IDs wrong.
+> Fine-tuning lifts this to 36.2% (+7.6pp) on the same OOD test set. The 1.5B fine-tuned
+> result (40.2%) is in-distribution only and not directly comparable.
 
 ---
 
