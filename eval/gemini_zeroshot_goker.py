@@ -355,6 +355,8 @@ def main() -> None:
     client = genai.Client(api_key=api_key)
     os.makedirs(RESULTS_DIR, exist_ok=True)
 
+    STOP_FILE = os.path.join(RESULTS_DIR, ".stop_after_model")
+
     all_results = []
     for model in args.models:
         result = run_model(client, model, examples, thinking_budget)
@@ -369,6 +371,11 @@ def main() -> None:
         with open(out_path, "w") as f:
             json.dump(result, f, indent=2)
         console.print(f"[green]Saved:[/] {out_path}")
+
+        if os.path.exists(STOP_FILE):
+            os.remove(STOP_FILE)
+            console.print(f"[yellow]Stop file detected — skipping remaining models.[/]")
+            break
 
     # ── final comparison table ───────────────────────────────
     table = Table(title="GoKer Zero-Shot Final Results", show_lines=True)

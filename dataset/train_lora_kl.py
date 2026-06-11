@@ -392,11 +392,9 @@ def main() -> None:
         bf16=True,
         optim="adamw_8bit",
         gradient_checkpointing=True,
-        eval_strategy="steps",
-        eval_steps=100,
-        save_strategy="steps",
-        save_steps=100,
-        save_total_limit=3,
+        eval_strategy="no",       # mid-training eval triggers Unsloth inference mode
+        save_strategy="epoch",    # save checkpoint once per epoch instead
+        save_total_limit=2,
         logging_steps=10,
         report_to="none",
         dataloader_num_workers=0,
