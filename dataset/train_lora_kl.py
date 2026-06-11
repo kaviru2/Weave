@@ -411,6 +411,7 @@ def main() -> None:
     )
 
     print("\nStarting training...")
+    os.environ["UNSLOTH_RETURN_LOGITS"] = "1"
     trainer.train()
 
     print(f"\nSaving adapter to {args.output_dir}...")
