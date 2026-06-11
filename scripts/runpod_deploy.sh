@@ -7,10 +7,10 @@
 #
 # Optional env vars:
 #   RUNPOD_KEY   — SSH key path (default: ~/.ssh/id_runpod)
-#   MODEL_ID     — HuggingFace model (default: Qwen/Qwen2.5-Coder-1.5B-Instruct)
+#   MODEL_ID     — HuggingFace model (default: Qwen/Qwen2.5-Coder-7B-Instruct)
 #   EPOCHS       — training epochs (default: 3)
-#   BATCH_SIZE   — per-device batch size (default: 4)
-#   GRAD_ACCUM   — gradient accumulation steps (default: 2)
+#   BATCH_SIZE   — per-device batch size (default: 1, tuned for 20GB VRAM)
+#   GRAD_ACCUM   — gradient accumulation steps (default: 8)
 #   MAX_SEQ_LEN  — max sequence length (default: 4096)
 
 set -e
@@ -18,13 +18,14 @@ set -e
 RUNPOD_IP="${RUNPOD_IP:?Set RUNPOD_IP to your pod's IP}"
 RUNPOD_PORT="${RUNPOD_PORT:?Set RUNPOD_PORT to your pod's SSH port}"
 RUNPOD_KEY="${RUNPOD_KEY:-$HOME/.ssh/id_runpod}"
-MODEL_ID="${MODEL_ID:-Qwen/Qwen2.5-Coder-1.5B-Instruct}"
+MODEL_ID="${MODEL_ID:-Qwen/Qwen2.5-Coder-7B-Instruct}"
 EPOCHS="${EPOCHS:-3}"
-BATCH_SIZE="${BATCH_SIZE:-4}"
-GRAD_ACCUM="${GRAD_ACCUM:-2}"
+BATCH_SIZE="${BATCH_SIZE:-1}"
+GRAD_ACCUM="${GRAD_ACCUM:-8}"
 MAX_SEQ_LEN="${MAX_SEQ_LEN:-4096}"
 
 SSH_OPTS="-p $RUNPOD_PORT -i $RUNPOD_KEY -o StrictHostKeyChecking=no"
+SCP_OPTS="-P $RUNPOD_PORT -i $RUNPOD_KEY -o StrictHostKeyChecking=no"
 
 echo "========================================"
 echo " Weave RunPod Deploy"
@@ -40,10 +41,10 @@ ssh $SSH_OPTS root@$RUNPOD_IP "nvidia-smi --query-gpu=name,memory.total --format
 # ── 2. Upload files ────────────────────────────────────────────────────────────
 echo ""
 echo "[2/4] Uploading files..."
-scp $SSH_OPTS \
+scp $SCP_OPTS \
     dataset/output/kaggle_upload/train_point_dups.jsonl \
     dataset/output/kaggle_upload/val_point_dups.jsonl \
-    dataset/train_lora.py \
+    dataset/train_lora_unsloth.py \
     scripts/run_eval.py \
     scripts/runpod_pod.sh \
     root@$RUNPOD_IP:/root/
@@ -77,6 +78,6 @@ echo " Check progress remotely:"
 echo "   ssh root@$RUNPOD_IP -p $RUNPOD_PORT -i $RUNPOD_KEY 'tail -5 /root/train.log'"
 echo ""
 echo " Download results when done:"
-echo "   scp $SSH_OPTS root@$RUNPOD_IP:/root/eval_results.json eval/results/eval_results_runpod.json"
-echo "   scp $SSH_OPTS -r root@$RUNPOD_IP:/root/lora_adapter dataset/output/lora_adapter_v2"
+echo "   scp $SCP_OPTS root@$RUNPOD_IP:/root/eval_results.json eval/results/eval_results_runpod.json"
+echo "   scp $SCP_OPTS -r root@$RUNPOD_IP:/root/lora_adapter dataset/output/lora_adapter_v3"
 echo "========================================"

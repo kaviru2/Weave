@@ -18,7 +18,7 @@ Usage:
 import argparse, json, time, os
 from collections import defaultdict
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 from peft import PeftModel
 
 os.environ["HF_HUB_DISABLE_XET"] = "1"
@@ -38,27 +38,38 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--adapter",  required=True)
     parser.add_argument("--val_file", required=True)
-    parser.add_argument("--model_id", default="Qwen/Qwen2.5-Coder-1.5B-Instruct")
+    parser.add_argument("--model_id", default="Qwen/Qwen2.5-Coder-7B-Instruct")
     parser.add_argument("--out_file", default="eval_results.json")
     parser.add_argument("--max_tokens", type=int, default=4096)
+    parser.add_argument("--load_in_4bit", action="store_true",
+                        help="Load base model in 4-bit (use on CUDA when VRAM < 16GB)")
     args = parser.parse_args()
 
     device = get_device()
-    # MPS works best with bfloat16; CUDA and CPU use float16
     dtype = torch.bfloat16 if device.type == "mps" else torch.float16
-    print(f"Device: {device}  |  dtype: {dtype}")
+    print(f"Device: {device}  |  dtype: {dtype}  |  4-bit: {args.load_in_4bit}")
     print(f"Loading base model: {args.model_id}")
 
     tokenizer = AutoTokenizer.from_pretrained(args.model_id, trust_remote_code=True)
     tokenizer.truncation_side = "left"
-    base_model = AutoModelForCausalLM.from_pretrained(
-        args.model_id,
-        torch_dtype=dtype,
-        # device_map="auto" only works on CUDA; for MPS/CPU load then move manually
-        device_map="auto" if device.type == "cuda" else None,
-        trust_remote_code=True,
-    )
-    if device.type != "cuda":
+
+    load_kwargs = dict(trust_remote_code=True)
+    if args.load_in_4bit and device.type == "cuda":
+        load_kwargs["quantization_config"] = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=torch.bfloat16,
+            bnb_4bit_use_double_quant=True,
+        )
+        load_kwargs["device_map"] = "auto"
+    elif device.type == "cuda":
+        load_kwargs["torch_dtype"] = dtype
+        load_kwargs["device_map"] = "auto"
+    else:
+        load_kwargs["torch_dtype"] = dtype
+
+    base_model = AutoModelForCausalLM.from_pretrained(args.model_id, **load_kwargs)
+    if device.type not in ("cuda",):
         base_model = base_model.to(device)
 
     print(f"Loading adapter: {args.adapter}")

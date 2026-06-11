@@ -12,13 +12,13 @@ Usage:
 import argparse
 from pathlib import Path
 
-REPO_ID_DEFAULT  = "kavirubc/weave-ccwm-qwen2.5-coder-1.5b-lora"
-ADAPTER_DEFAULT  = "dataset/output/lora_adapter_v2/lora_adapter/checkpoint-516"
+REPO_ID_DEFAULT  = "kavirubc/weave-ccwm-qwen2.5-coder-7b-lora"
+ADAPTER_DEFAULT  = "dataset/output/lora_adapter_v3"
 
 MODEL_CARD = """---
 language: en
 license: apache-2.0
-base_model: Qwen/Qwen2.5-Coder-1.5B-Instruct
+base_model: Qwen/Qwen2.5-Coder-7B-Instruct
 tags:
   - lora
   - qlora
@@ -31,7 +31,7 @@ datasets:
   - kavirubc/weave-bench
 ---
 
-# Weave-CCWM — Qwen2.5-Coder-1.5B LoRA (Phase 12 POC)
+# Weave-CCWM — Qwen2.5-Coder-7B LoRA (Phase 13)
 
 A LoRA adapter fine-tuned on **Weave-Bench** for next-scheduler-event prediction in
 concurrent Go programs. Part of the [Weave](https://github.com/kaviru2/Weave) project
@@ -51,28 +51,16 @@ Output: {"event_type": "GoBlock", "goroutine_id": 3, "reasoning": "...", "confid
 
 | Setting | Value |
 |---------|-------|
-| Base model | `Qwen/Qwen2.5-Coder-1.5B-Instruct` |
-| Method | QLoRA (4-bit NF4 + LoRA r=8) |
-| Dataset | [kavirubc/weave-bench](https://huggingface.co/datasets/kavirubc/weave-bench) — 1,377 train / 366 val |
-| Epochs | 3 |
-| Hardware | NVIDIA A40 48GB |
-| train_loss | 0.094 |
-| eval_loss | 0.326 |
+| Base model | `Qwen/Qwen2.5-Coder-7B-Instruct` |
+| Method | Unsloth + QLoRA |
+| Dataset | [kavirubc/weave-bench](https://huggingface.co/datasets/kavirubc/weave-bench) |
 
-## Results (Phase 12)
+## Results (Phase 13)
 
 | Model | Accuracy | Notes |
 |-------|----------|-------|
-| Qwen2.5-Coder-1.5B fine-tuned (this model) | **40.2%** | Phase 12 — 147/366 correct |
-| Qwen2.5-Coder-1.5B zero-shot | 0.0% | 0/366 — base model cannot parse task format |
-| Gemini zero-shot (Phase 4 baseline) | 56.0% | Different, much larger model — not a direct comparison |
-
-Fine-tuning adds **+40 percentage points** over the same base model zero-shot.
-The Gemini 56% is provided for reference only — it used a different, much larger model.
-
-This is an **experimental research checkpoint** published for reproducibility. See the
-[GitHub repo](https://github.com/kaviru2/Weave) and
-[dataset](https://huggingface.co/datasets/kavirubc/weave-bench) for full context.
+| Qwen2.5-Coder-7B fine-tuned (this model) | **36.2%** | Phase 13 on GoKer held-out set |
+| Qwen2.5-Coder-1.5B fine-tuned | 40.2% | Phase 12 (in-distribution evaluation) |
 
 ## Usage
 
@@ -82,18 +70,18 @@ from peft import PeftModel
 import torch
 
 base = AutoModelForCausalLM.from_pretrained(
-    "Qwen/Qwen2.5-Coder-1.5B-Instruct",
+    "Qwen/Qwen2.5-Coder-7B-Instruct",
     torch_dtype=torch.bfloat16,
     device_map="auto",
 )
-model = PeftModel.from_pretrained(base, "kavirubc/weave-ccwm-qwen2.5-coder-1.5b-lora")
-tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen2.5-Coder-1.5B-Instruct")
+model = PeftModel.from_pretrained(base, "kavirubc/weave-ccwm-qwen2.5-coder-7b-lora")
+tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen2.5-Coder-7B-Instruct")
 ```
 
 Or use the eval script from the repo:
 ```bash
-uv run python scripts/run_eval.py \\
-    --adapter kavirubc/weave-ccwm-qwen2.5-coder-1.5b-lora \\
+uv run python scripts/run_eval_unsloth.py \\
+    --adapter kavirubc/weave-ccwm-qwen2.5-coder-7b-lora \\
     --val_file dataset/output/kaggle_upload/val_point_dups.jsonl
 ```
 

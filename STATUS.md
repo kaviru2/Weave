@@ -4,25 +4,23 @@
 
 ## Current State
 
-**Phase 12 complete.** Training run + zero-shot baseline both done (RunPod A40, 2026-06-10/11).
-**Active branch:** `phase-12-modal-train` — awaiting PR merge to main.
-
-Qwen zero-shot result: **0.0%** (0/366). Fine-tuned result: **40.2%** (147/366). Fine-tuning adds 40+ percentage points over the base model on this task.
+**Phase 13 complete.** Qwen2.5-Coder-7B fine-tuned on hand-crafted+generated programs,
+evaluated on GoKer held-out test set. Adapter saved locally and being uploaded to HF.
+**Next:** Qwen 7B zero-shot baseline (in progress on RunPod), Gemini zero-shot on GoKer,
+then Phase 14 distribution-loss training.
 
 ---
 
 ## Results Summary
 
-| Model | Accuracy | Notes |
-|-------|----------|-------|
-| Gemini (zero-shot, Phase 4) | 56.0% | Large model, no fine-tuning, different base |
-| Qwen2.5-Coder-1.5B (zero-shot) | **0.0%** | 0/366 — base model cannot parse task format |
-| Qwen2.5-Coder-1.5B (fine-tuned, Phase 12) | **40.2%** | After truncation bug fix; 147/366 correct |
-| Qwen2.5-Coder-1.5B (Phase 10, had truncation bug) | 91.7% val token acc* | Misleading metric |
-
-*Phase 10 val token accuracy was inflated — SFTTrainer right-truncated 87% of examples
-at 2048 tokens, cutting the JSON target. The model learned trace continuation, not prediction.
-Phase 12 fixes this with dataset pre-truncation (`max_seq_length` raised to 4096).
+| Model | Dataset | Accuracy | Notes |
+|-------|---------|----------|-------|
+| Gemini (zero-shot, Phase 4) | in-distribution | 56.0% | Large model, no fine-tuning |
+| Qwen2.5-Coder-1.5B (zero-shot) | in-distribution | 0.0% | Cannot parse task format |
+| Qwen2.5-Coder-1.5B (fine-tuned, Phase 12) | in-distribution | 40.2% | After truncation bug fix |
+| **Qwen2.5-Coder-7B (fine-tuned, Phase 13)** | **GoKer held-out** | **36.2%** | **First clean OOD result** |
+| Qwen2.5-Coder-7B (zero-shot) | GoKer held-out | pending | Running on RunPod |
+| Gemini (zero-shot on GoKer) | GoKer held-out | pending | Run locally via API |
 
 **Distribution learning results (Phase 7–8):**
 
@@ -38,45 +36,44 @@ Phase 12 fixes this with dataset pre-truncation (`max_seq_length` raised to 4096
 
 ## Phase Checklist
 
-- [x] Phase 1 — Go Trace Collector (`tracer/`) — merged to main
-- [x] Phase 2 — Program Suite (26 hand-crafted programs) — merged to main
-- [x] Phase 3 — Dataset Builder (`dataset/builder.go`) — merged to main
-- [x] Phase 4 — Gemini Zero-Shot Eval — merged to main; 56% accuracy, 0% bug detection
-- [x] Phase 5 — Results Analysis — merged to main
-- [x] Phase 6 — Distribution Aggregation (`dataset/aggregate.py`) — merged to main
-- [x] Phase 7 — Distribution Zero-Shot Eval (ECE 0.169 with thinking) — merged to main
-- [x] Phase 8 — Dirichlet Analysis (leak signature confirmed) — merged to main
-- [x] Phase 9 — Dataset Expansion (+10 leak programs, 26 total) — merged to main
-- [x] Phase 9b — Select-block boundary test (multi-case confirmed) — merged to main
-- [x] Phase 10 — QLoRA Fine-tuning (had truncation bug) — merged to main
-- [x] Phase 11 — Dataset Expansion II (+38 gen + 66 GoKer = 130 programs total) — on branch
-- [x] Phase 12 — Truncation fix + retrain on A40 (40.2% accuracy) — on branch, pending merge
+- [x] Phase 1 — Go Trace Collector (`tracer/`)
+- [x] Phase 2 — Program Suite (26 hand-crafted programs)
+- [x] Phase 3 — Dataset Builder (`dataset/builder.go`)
+- [x] Phase 4 — Gemini Zero-Shot Eval — 56% accuracy, 0% bug detection
+- [x] Phase 5 — Results Analysis
+- [x] Phase 6 — Distribution Aggregation (`dataset/aggregate.py`)
+- [x] Phase 7 — Distribution Zero-Shot Eval (ECE 0.169 with thinking)
+- [x] Phase 8 — Dirichlet Analysis (leak signature confirmed)
+- [x] Phase 9 — Dataset Expansion (+10 leak programs, 26 total)
+- [x] Phase 9b — Select-block boundary test (multi-case confirmed)
+- [x] Phase 10 — QLoRA Fine-tuning (had truncation bug)
+- [x] Phase 11 — Dataset Expansion II (+38 gen + 66 GoKer = 130 programs total)
+- [x] Phase 12 — Truncation fix + retrain on A40 (40.2% in-dist accuracy)
+- [x] Phase 13 — GoKer held-out split + Unsloth 7B training (36.2% GoKer accuracy)
+- [ ] Phase 14 — Distribution-loss training (KL vs empirical distributions)
+- [ ] Phase 15 — Autoregressive rollout (`eval/simulation_rollout.py`)
 
 ---
 
 ## Immediate Next Steps
 
-### 1. Merge phase-12-modal-train → main
-Open PR, merge. All phases will be on main.
+### 1. Finish pending evals (in progress)
+- **Qwen 7B zero-shot on GoKer** — running on RunPod (eval_zeroshot_7b.py)
+- **Gemini zero-shot on GoKer** — run locally: `uv run python eval/dist_zero_shot.py` pointed at GoKer val set
 
-### 3. Rebuild dataset with GoKer as held-out test set (Phase 13)
-The current train/val split is random across all programs — not a clean research eval.
-For a publishable result:
-- **Train set**: hand-crafted programs (`01_`–`26_`) + generated (`gen_*`)
-- **Test set**: GoKer real-world bugs (`goker_*`, held out entirely from training)
-- Rebuild `dataset/builder.go` split logic, regenerate JSONL, retrain
+### 2. Upload Phase 13 artifacts to HuggingFace
+- Adapter: `dataset/output/lora_adapter_v3/` → `kavirubc/weave-ccwm-qwen2.5-coder-7b-lora`
+- Dataset: `dataset/output/kaggle_upload/` (GoKer-split JSONL) → `kavirubc/weave-bench`
+- Script: `uv run python scripts/upload_model_hf.py --adapter dataset/output/lora_adapter_v3`
 
-This gives the headline claim: *"trained on synthetic programs, evaluated on real
-concurrency bugs from CockroachDB, Kubernetes, etcd, gRPC — never seen during training."*
+### 3. Phase 14 — Distribution-loss training
+- Train the 7B model using KL divergence against empirical distributions in `aggregated.json`
+- Implement custom trainer with KL loss in `dataset/train_lora_kl.py`
+- This is the core research contribution distinguishing Weave from standard fine-tuning
 
-### 4. Diagnose 40.2% underperformance
-The `concurrency_pattern` and `nondeterminism` fields show as "unknown" in eval output,
-suggesting JSONL metadata is missing. Check `dataset/prepare_finetuning.py` output schema.
-Also compare to Qwen zero-shot baseline once that result lands.
-
-### 5. Distribution-loss training (Phase 14)
-Retrain with KL divergence against empirical distributions (Phase 6 aggregated.json)
-instead of cross-entropy on a single run. This is the core research contribution.
+### 4. Phase 15 — Autoregressive rollout
+- Multi-step trajectory simulation on GoKer programs
+- Measure trajectory divergence from ground truth
 
 ---
 
@@ -84,19 +81,21 @@ instead of cross-entropy on a single run. This is the core research contribution
 
 | Artifact | Location |
 |----------|----------|
-| LoRA adapter (Phase 12) | `dataset/output/lora_adapter_v2/lora_adapter/checkpoint-516/` |
-| Eval results (fine-tuned) | `eval/results/eval_results_runpod.json` |
-| Eval results (zero-shot) | `eval/results/eval_results_zeroshot.json` — 0.0% (0/366) |
-| HF model | https://huggingface.co/kavirubc/weave-ccwm-qwen2.5-coder-1.5b-lora |
+| LoRA adapter (Phase 12, 1.5B) | `dataset/output/lora_adapter_v2/` |
+| **LoRA adapter (Phase 13, 7B)** | `dataset/output/lora_adapter_v3/` (154MB) |
+| Eval results (1.5B fine-tuned) | `eval/results/eval_results_runpod.json` (40.2%) |
+| **Eval results (7B fine-tuned, GoKer)** | `eval/results/eval_results_runpod_7b.json` (36.2%) |
+| Eval results (zero-shot) | `eval/results/eval_results_zeroshot.json` (0.0%) |
+| HF model (1.5B) | https://huggingface.co/kavirubc/weave-ccwm-qwen2.5-coder-1.5b-lora |
 | HF dataset | https://huggingface.co/datasets/kavirubc/weave-bench |
 
 ---
 
 ## Compute
 
-**RunPod** is the primary GPU compute. See `RUNPOD_STATUS.md` for pod details.
-Deploy a new run: `RUNPOD_IP=<ip> RUNPOD_PORT=<port> bash scripts/runpod_deploy.sh`
+**RunPod** is the primary GPU compute. Deploy: `RUNPOD_IP=<ip> RUNPOD_PORT=<port> bash scripts/runpod_deploy.sh`
 
-**Current pod** (terminate after zero-shot eval finishes):
-- IP: 69.30.85.12 | Port: 22013 | Key: `~/.ssh/id_runpod`
-- GPU: A40 48GB | Status: running zero-shot eval
+**GPU guidance:**
+- RTX 4000 Ada (20GB, ~$0.76/hr) — 7B QLoRA via Unsloth (Phase 13 used this)
+- A40 (48GB, ~$1.28/hr) — used for Phase 12 (1.5B)
+- SSH key: `~/.ssh/id_runpod`

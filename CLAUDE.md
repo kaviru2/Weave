@@ -29,9 +29,11 @@ Weave's research questions:
 > bug detection than point-prediction models. Nobody has done this — it is a direct
 > consequence of concurrent execution being nondeterministic.
 
-Phases 1–12 complete. Phase 12 fine-tuned Qwen2.5-Coder-1.5B on A40 (40.2% accuracy).
-Qwen zero-shot baseline pending. Next: GoKer held-out test set (Phase 13), distribution-loss
-training (Phase 14). See STATUS.md for current state and immediate next steps.
+Phases 1–13 complete. Phase 13 fine-tuned Qwen2.5-Coder-7B via Unsloth on RTX 4000 Ada,
+achieving 36.2% accuracy on the GoKer held-out test set (first clean OOD result).
+Pending: Qwen 7B zero-shot baseline on GoKer, Gemini zero-shot on GoKer.
+Next: Phase 14 distribution-loss training (KL vs empirical distributions).
+See STATUS.md for current state and immediate next steps.
 
 ---
 
@@ -93,15 +95,22 @@ next states.
 8. **Scale up** — larger model (7B+) on RunPod/WSO2 infrastructure
 9. **Ballerina** — extend to Ballerina concurrent programs (requires WSO2 conversation)
 
-**Immediate next steps:**
-1. **Commit zero-shot baseline** — `eval/results/eval_results_zeroshot.json` from RunPod (Qwen base model, no adapter); update HF model card
-2. **Merge phase-12-modal-train → main** via PR
-3. **Phase 13 — GoKer held-out test set** — rebuild dataset with `goker_*` programs as held-out test (never seen during training); train on hand-crafted + gen only; eval on GoKer real bugs — this is the publishable eval claim
-4. **Phase 14 — Distribution-loss training** — retrain with KL divergence against Phase 6 empirical distributions instead of cross-entropy; use Unsloth for speed; use RTX 4000 Ada for cost
-5. **Phase 15 — Autoregressive rollout** (`eval/simulation_rollout.py`) — feed predictions back as input, measure trajectory divergence from real traces
+**Phase 13 complete. Immediate next steps (Phase 14+):**
+1. **Finish pending baselines**:
+   - Qwen2.5-Coder-7B zero-shot on GoKer held-out set (currently running on RunPod)
+   - Gemini zero-shot on GoKer val set — run `eval/zero_shot.go` or `eval/dist_zero_shot.py` pointed at `val_point_dups.jsonl`
+2. **Upload Phase 13 artifacts to HuggingFace**:
+   - 7B adapter: `dataset/output/lora_adapter_v3/` → `kavirubc/weave-ccwm-qwen2.5-coder-7b-lora`
+   - Dataset with GoKer split: `dataset/output/kaggle_upload/` → `kavirubc/weave-bench`
+3. **Phase 14 — Distribution-loss training**:
+   - Train the 7B model using KL divergence against empirical probability distributions in `aggregated.json` instead of point prediction cross-entropy.
+   - Implement `dataset/train_lora_kl.py` with a custom KL loss trainer.
+   - This is the core research contribution: training with uncertainty targets derived from nondeterministic execution.
+4. **Phase 15 — Autoregressive rollout** (`eval/simulation_rollout.py`):
+   - Perform multi-step trajectory simulation to evaluate trajectory divergence on GoKer.
 
-**Compute strategy:** Kaggle free tier proved viable for 1.5B QLoRA. Larger models and
-distribution training need A100/H100. RunPod or WSO2 infrastructure for that step.
+**Compute strategy:** RTX 4000 Ada (20GB, ~$0.76/hr) for 7B Unsloth training. SSH key: `~/.ssh/id_runpod`.
+
 
 ---
 
@@ -119,7 +128,10 @@ All phases done and merged to main. See STATUS.md for full details.
 - **Phase 8** — `eval/dirichlet_analysis.py` — Dirichlet-Categorical analysis
 - **Phase 9** — `programs/16–25` — 10 new leak programs; dataset expanded to 25 programs
 - **Phase 9b** — `programs/26` — select-block boundary test; causal claim confirmed for multi-case selects
-- **Phase 10** — `dataset/train_lora.py` — QLoRA fine-tuning; 91.7% val accuracy (vs 56% zero-shot)
+- **Phase 10** — `dataset/train_lora.py` — QLoRA fine-tuning; 91.7% val accuracy (inflated — truncation bug)
+- **Phase 11** — `programs/gen_* + goker_*` — Dataset expansion to 130 programs (26 hand-crafted + 38 generated + 66 GoKer)
+- **Phase 12** — Truncation fix + retrain on A40; 40.2% in-distribution accuracy (Qwen2.5-Coder-1.5B)
+- **Phase 13** — GoKer held-out split + Unsloth 7B training; **36.2% on GoKer held-out** (Qwen2.5-Coder-7B, RTX 4000 Ada)
 
 ## Your Job Right Now
 

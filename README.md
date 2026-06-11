@@ -29,20 +29,25 @@ detectable from partial traces — a formal consequence of the goroutine's state
 
 ## Key Results
 
-| Experiment | Metric | Value |
-|-----------|--------|-------|
-| Gemini zero-shot (Phase 4) | event_type accuracy | 56.0% |
-| Qwen2.5-Coder-1.5B zero-shot | event_type accuracy | 0.0% |
-| Qwen2.5-Coder-1.5B fine-tuned (Phase 12) | event_type accuracy | **40.2%** |
-| Distribution prompting, no thinking (Phase 7) | ECE | 0.183 |
-| Distribution prompting, thinking=1024 (Phase 7) | ECE | **0.169** |
-| Point-prediction baseline ECE (Phase 4) | ECE | 0.205 |
-| Entropy–nondeterminism correlation (Phase 8) | Spearman ρ | 0.412, p=0.007 |
-| Select-block leak signature | P(GoUnblock)=0 at all trace depths | 3/3 programs |
+| Experiment | Dataset | Metric | Value |
+|-----------|---------|--------|-------|
+| Gemini zero-shot (Phase 4) | in-distribution | event_type accuracy | 56.0% |
+| Qwen2.5-Coder-1.5B zero-shot | in-distribution | event_type accuracy | 0.0% |
+| Qwen2.5-Coder-1.5B fine-tuned (Phase 12) | in-distribution | event_type accuracy | 40.2% |
+| **Qwen2.5-Coder-7B fine-tuned (Phase 13)** | **GoKer held-out** | **event_type accuracy** | **36.2%** |
+| Distribution prompting, no thinking (Phase 7) | in-distribution | ECE | 0.183 |
+| Distribution prompting, thinking=1024 (Phase 7) | in-distribution | ECE | **0.169** |
+| Point-prediction baseline ECE (Phase 4) | in-distribution | ECE | 0.205 |
+| Entropy–nondeterminism correlation (Phase 8) | — | Spearman ρ | 0.412, p=0.007 |
+| Select-block leak signature | — | P(GoUnblock)=0 at all trace depths | 3/3 programs |
 
+> **Phase 13 result:** The 7B model achieves **36.2% accuracy on the GoKer held-out test set**
+> — real-world concurrent bug programs never seen during training. This is the first clean
+> generalisation measurement on out-of-distribution concurrent programs.
+>
 > **Note on baselines:** Qwen2.5-Coder-1.5B zero-shot scores 0.0% — the base model cannot
-> parse the task format without fine-tuning. Fine-tuning adds +40 percentage points.
-> Gemini (56%) uses a much larger model and is not a direct comparison.
+> parse the task format without fine-tuning. The 1.5B fine-tuned result (40.2%) is evaluated
+> in-distribution; the 7B fine-tuned result (36.2%) is on the held-out GoKer test set.
 
 ---
 
@@ -65,23 +70,27 @@ nondeterminism level) and are automatically discovered by the dataset builder.
 
 | Split | Examples | Description |
 |-------|----------|-------------|
-| `data/train.jsonl` | 1,377 | Fine-tuning examples (chat format) |
-| `data/validation.jsonl` | 366 | Held-out evaluation |
-| `data/aggregated.json` | 75 groups | Empirical next-event distributions with Dirichlet posteriors |
-| `traces/*.json` | 1,827 files | Per-run raw trace examples |
+| `train_point_dups.jsonl` | 945 | Fine-tuning examples — hand-crafted + generated programs only |
+| `val_point_dups.jsonl` | 798 | **GoKer held-out test set** — real-world bugs, unseen during training |
+| `train_dist.jsonl` | 189 | Distribution-format training examples |
+| `val_dist.jsonl` | 162 | Distribution-format GoKer test examples |
+| `aggregated.json` | 75 groups | Empirical next-event distributions with Dirichlet posteriors |
 
 Each example is a `(program_source, partial_trace, next_event)` triple. The partial trace
 represents 25%, 50%, or 75% of a recorded execution. Five runs per program capture different
-nondeterministic interleavings.
+nondeterministic interleavings. GoKer programs are held out entirely from training.
 
 ---
 
-## Model
+## Models
 
-**Weave-CCWM (Phase 12)** on Hugging Face: [kavirubc/weave-ccwm-qwen2.5-coder-1.5b-lora](https://huggingface.co/kavirubc/weave-ccwm-qwen2.5-coder-1.5b-lora)
+| Model | HuggingFace | Notes |
+|-------|-------------|-------|
+| Weave-CCWM 1.5B (Phase 12) | [kavirubc/weave-ccwm-qwen2.5-coder-1.5b-lora](https://huggingface.co/kavirubc/weave-ccwm-qwen2.5-coder-1.5b-lora) | QLoRA on Qwen2.5-Coder-1.5B, 40.2% in-dist |
+| **Weave-CCWM 7B (Phase 13)** | *(uploading)* | QLoRA on Qwen2.5-Coder-7B via Unsloth, **36.2% GoKer held-out** |
 
-QLoRA fine-tune of `Qwen/Qwen2.5-Coder-1.5B-Instruct` on Weave-Bench.
-train_loss=0.094, eval_loss=0.326, 3 epochs, A40 48GB.
+Phase 13 training: 3 epochs, batch=1, grad_accum=8, seq_len=4096, LoRA r=16/α=32.
+RTX 4000 Ada (20GB), ~2h 11min. Train loss: 0.058.
 
 ---
 
@@ -101,7 +110,7 @@ uv sync                  # Python deps via uv
 ```bash
 go run dataset/builder.go dataset/schema.go    # collect traces, build eval examples
 uv run python dataset/aggregate.py             # empirical distributions
-uv run python dataset/prepare_finetuning.py    # train/val JSONL for fine-tuning
+uv run python dataset/prepare_finetuning.py    # GoKer held-out train/val JSONL
 ```
 
 ### Replicate zero-shot baseline (requires Gemini API key)
@@ -114,21 +123,26 @@ uv run python eval/dist_zero_shot.py           # distribution eval (ECE)
 uv run python eval/dirichlet_analysis.py       # anomaly scores, leak signatures
 ```
 
-### Fine-tuning (RunPod)
+### Fine-tuning on RunPod (7B with Unsloth)
 
 ```bash
-RUNPOD_IP=<ip> RUNPOD_PORT=<port> bash scripts/runpod_deploy.sh
+# Provision RTX 4000 Ada (20GB) on RunPod, then:
+RUNPOD_IP=<ip> RUNPOD_PORT=<port> RUNPOD_KEY=~/.ssh/id_runpod bash scripts/runpod_deploy.sh
+# Defaults: Qwen2.5-Coder-7B-Instruct, batch=1, grad_accum=8, epochs=3
 ```
 
-### Local inference (Mac M-series)
+### Evaluate fine-tuned adapter
 
 ```bash
+# On RunPod (after training):
+python scripts/eval_unsloth.py   # uses Unsloth-loaded adapter
+
+# Locally (Mac M-series, float16):
 uv run python scripts/run_eval.py \
-    --adapter  dataset/output/lora_adapter_v2/lora_adapter/checkpoint-516 \
-    --val_file dataset/output/kaggle_upload/val_point_dups.jsonl
+    --adapter  dataset/output/lora_adapter_v3 \
+    --val_file dataset/output/kaggle_upload/val_point_dups.jsonl \
+    --load_in_4bit
 ```
-
-Auto-detects MPS (Apple Silicon), CUDA, or CPU.
 
 ---
 
@@ -136,52 +150,53 @@ Auto-detects MPS (Apple Silicon), CUDA, or CPU.
 
 ```
 weave/
-  tracer/                   — Go trace collector (golang.org/x/exp/trace)
-  programs/                 — 130 concurrent Go programs
+  tracer/                      — Go trace collector (golang.org/x/exp/trace)
+  programs/                    — 130 concurrent Go programs
   dataset/
-    builder.go              — trace collection and eval example generation
-    schema.go               — JSON types
-    aggregate.py            — empirical distribution aggregation (Phase 6)
-    prepare_finetuning.py   — chat-format JSONL with smart truncation (Phase 12 fix)
-    train_lora.py           — QLoRA fine-tuning script
-    generate_programs.py    — synthetic program synthesiser
-    import_gobench.py       — GoKer/GoBench importer
+    builder.go                 — trace collection and eval example generation
+    schema.go                  — JSON types
+    aggregate.py               — empirical distribution aggregation (Phase 6)
+    prepare_finetuning.py      — GoKer held-out split + chat-format JSONL (Phase 13)
+    train_lora.py              — standard QLoRA fine-tuning script (1.5B)
+    train_lora_unsloth.py      — Unsloth QLoRA fine-tuning script (7B, Phase 13)
+    generate_programs.py       — synthetic program synthesiser
+    import_gobench.py          — GoKer/GoBench importer
   eval/
-    zero_shot.go            — Gemini point-prediction baseline (Phase 4)
-    analyze/analyze.go      — accuracy report (Phase 5)
-    dist_zero_shot.py       — distribution calibration eval (Phase 7)
-    dirichlet_analysis.py   — anomaly scores, leak signatures (Phase 8)
-    simulation_rollout.py   — autoregressive trajectory rollout (Phase 11, in progress)
+    zero_shot.go               — Gemini point-prediction baseline (Phase 4)
+    analyze/analyze.go         — accuracy report (Phase 5)
+    dist_zero_shot.py          — distribution calibration eval (Phase 7)
+    dirichlet_analysis.py      — anomaly scores, leak signatures (Phase 8)
+    simulation_rollout.py      — autoregressive trajectory rollout (Phase 15, planned)
   scripts/
-    runpod_deploy.sh        — one-command RunPod deploy
-    runpod_pod.sh           — pod-side training script
-    run_eval.py             — eval script (CUDA / MPS / CPU)
-    run_eval_zeroshot.py    — zero-shot eval (no adapter)
-    upload_dataset_hf.py    — sync dataset/output/ → HF Hub
-    upload_model_hf.py      — upload LoRA adapter → HF Hub
-  weave_final.tex           — paper draft (target: ISSTA/MSR 2027)
-  RUNPOD_STATUS.md          — live training tracker
-  STATUS.md                 — project state and next steps
+    runpod_deploy.sh           — one-command RunPod deploy (7B defaults)
+    runpod_pod.sh              — pod-side Unsloth training + eval script
+    run_eval.py                — eval script with --load_in_4bit flag (CUDA/MPS/CPU)
+    eval_unsloth.py            — Unsloth-based eval for pod (no re-download needed)
+    eval_zeroshot_7b.py        — 7B zero-shot eval (no adapter)
+    upload_dataset_hf.py       — sync dataset/output/ → HF Hub
+    upload_model_hf.py         — upload LoRA adapter → HF Hub
+  STATUS.md                    — live project state and next steps
+  CLAUDE.md                    — full research plan and phase specifications
 ```
 
 ---
 
 ## Key Design Decisions
 
-- `go tool trace` exposes goroutine scheduler events only — no local variable state. This is a deliberate constraint: the model must reason from scheduling behaviour, not data values.
+- `go tool trace` exposes goroutine scheduler events only — no local variable state. The model must reason from scheduling behaviour, not data values.
 - Multiple runs per program capture different nondeterministic interleavings. The five-run empirical distribution is the training signal for Phase 14 distribution-loss training.
-- `split_percent` grouping approximates "same trace prefix family" across runs. Acknowledged limitation: partial traces at the same percentage are structurally similar but not identical.
-- Dataset pre-truncation (Phase 12 fix): prompts left-truncated at source to ≤3,972 tokens so the JSON prediction target is never cut off by `SFTTrainer`'s `max_seq_length`.
-- GoKer programs are not yet used as a held-out test set (Phase 13 target). The current train/val split is random across all programs.
+- **GoKer held-out split (Phase 13):** All 66 GoKer real-world bug programs are reserved as the test set. Training uses only hand-crafted (`01_`–`26_`) and generated (`gen_*`) programs. This gives a clean generalisation measurement.
+- **Unsloth (Phase 13):** `use_gradient_checkpointing="unsloth"` with batch=1/grad_accum=8 fits 7B 4-bit QLoRA in 20GB VRAM without OOM.
+- Dataset pre-truncation (Phase 12 fix): prompts left-truncated at source to ≤4000 tokens so the JSON prediction target is never cut off by `SFTTrainer`'s `max_seq_length`.
 
 ---
 
 ## Limitations and Future Work
 
-- The eval set currently mixes hand-crafted, synthetic, and GoKer programs. Phase 13 will establish a clean held-out test using only GoKer real-world bugs.
-- Phase 12 accuracy (40.2%) needs Qwen zero-shot baseline to be interpretable. This measurement is pending.
-- Distribution-loss training (Phase 14) — training with KL divergence against empirical distributions rather than cross-entropy — is the core research contribution and is not yet implemented.
-- `go tool trace` does not expose local variable state. Extending to Ballerina (where the WSO2 runtime exposes strand-local state) would test the approach on a richer execution model.
+- **Phase 14 — Distribution-loss training:** Train the 7B model with KL divergence against empirical next-event distributions (`aggregated.json`) instead of cross-entropy point prediction. This is the core research contribution and is not yet implemented.
+- **Phase 15 — Autoregressive rollout:** Multi-step trajectory simulation to measure trajectory divergence on GoKer programs.
+- Qwen2.5-Coder-7B zero-shot baseline on GoKer pending (in progress).
+- Ballerina extension: requires WSO2 conversation (strand-local state richer than goroutine scheduler events).
 
 ---
 
