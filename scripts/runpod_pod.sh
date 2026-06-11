@@ -8,7 +8,12 @@ MODEL_ID="${MODEL_ID:-Qwen/Qwen2.5-Coder-7B-Instruct}"
 TRAIN_FILE="${TRAIN_FILE:-/root/train_point_dups.jsonl}"
 VAL_FILE="${VAL_FILE:-/root/val_point_dups.jsonl}"
 AGGREGATED_FILE="${AGGREGATED_FILE:-/root/aggregated.json}"
-OUTPUT_DIR="${OUTPUT_DIR:-/root/lora_adapter}"
+# Phase 14 saves to a different dir so it never overwrites the Phase 13 adapter
+if [ "${USE_KL:-0}" = "1" ]; then
+    OUTPUT_DIR="${OUTPUT_DIR:-/root/lora_adapter_kl}"
+else
+    OUTPUT_DIR="${OUTPUT_DIR:-/root/lora_adapter}"
+fi
 EPOCHS="${EPOCHS:-3}"
 BATCH_SIZE="${BATCH_SIZE:-1}"
 GRAD_ACCUM="${GRAD_ACCUM:-8}"
