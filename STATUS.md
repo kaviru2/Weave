@@ -4,14 +4,13 @@
 
 ## Current State
 
-**Paper submitted as preprint** to Zenodo (DOI: 10.5281/zenodo.20682004) and pending
-arXiv endorsement (cs.PL primary, cs.SE cross-list). Paper source in `LaTexPackage-1/`.
+**Paper published.** Preprint live on Zenodo (DOI: 10.5281/zenodo.20682004).
+arXiv endorsement pending (cs.PL primary, cs.SE cross-list) — endorsement code sent.
+Paper source and PDF in `LaTexPackage-1/`.
 
-**Phase 14 KL training IN PROGRESS** on RTX 4000 Ada (pod `weave p14515`,
-`157.157.221.29:22206`, key `~/.ssh/id_runpod`). Estimated ~4h 50min total, ~$1.30.
-Phase 15 rollout script written and will auto-run on the same pod after training.
-
-**Gemini GoKer baselines:** Flash done (34.8%). Pro running locally with `--no-thinking`.
+**Phases 14 + 15 complete.** KL model: 35.8% on GoKer held-out. Multi-step coherence
+probe: mean survival ~1 step, entropy 0.945 bits (leak) vs 0.773 bits (race). All results
+in paper and preprint.
 
 ---
 
@@ -25,8 +24,8 @@ Phase 15 rollout script written and will auto-run on the same pod after training
 | **Qwen2.5-Coder-7B (zero-shot)** | GoKer held-out | **28.6%** | Corrected from 0.0% (markdown-fence bug) |
 | **Gemini 3.5 Flash (zero-shot, thinking=auto)** | **GoKer held-out** | **34.8%** | Beats 7B zero-shot, below fine-tuned |
 | **Qwen2.5-Coder-7B (fine-tuned, Phase 13)** | **GoKer held-out** | **36.2%** | **Best OOD result — fine-tuning beats Gemini Flash** |
-| Gemini 3.1 Pro (zero-shot, no thinking) | GoKer held-out | pending | Running locally |
-| **Qwen2.5-Coder-7B KL-trained (Phase 14)** | GoKer held-out | pending | Training now |
+| Gemini 3.5 Flash, no thinking | GoKer held-out | 35.2% | Slightly above thinking variant |
+| **Qwen2.5-Coder-7B KL-trained (Phase 14)** | GoKer held-out | **35.8%** | Matches CE, better calibration |
 
 **Key comparison:** Fine-tuned 7B (36.2%) > Gemini Flash zero-shot (34.8%) > 7B zero-shot (28.6%).
 Training on 945 hand-crafted trace examples generalises better to real-world bugs than a large
@@ -60,42 +59,26 @@ general model zero-shot.
 - [x] Phase 11 — Dataset Expansion II (+38 gen + 66 GoKer = 130 programs total)
 - [x] Phase 12 — Truncation fix + retrain on A40 (40.2% in-dist accuracy)
 - [x] Phase 13 — GoKer held-out split + Unsloth 7B training (36.2% GoKer OOD)
-- [ ] **Phase 14 — KL distribution-loss training (RUNNING on RunPod)**
-- [ ] Phase 15 — Autoregressive rollout (script ready, runs after Phase 14)
+- [x] **Phase 14 — KL distribution-loss training (35.8% GoKer, ECE 0.169)**
+- [x] Phase 15 — Autoregressive rollout (coherence probe: ~1 step survival)
 
 ---
 
 ## Immediate Next Steps
 
-### 1. Wait for Phase 14 + 15 to finish (~4h 50min from start)
+### 1. Get arXiv endorsed and submit
+- Endorsement code sent; follow up if no response within a few days
+- Once endorsed, submit `LaTexPackage-1/weave.tex` compiled PDF to arXiv (cs.PL + cs.SE)
+- Update Zenodo record to link the arXiv ID once assigned
 
-Monitor:
-```bash
-ssh root@157.157.221.29 -p 22206 -i ~/.ssh/id_runpod 'tail -5 /root/train.log'
-```
+### 2. Extend to Ballerina (Phase 16)
+- Requires WSO2 conversation for server access and Ballerina tracer work
+- This is the next major research phase
 
-Download when done:
-```bash
-scp -P 22206 -i ~/.ssh/id_runpod root@157.157.221.29:/root/eval_results.json eval/results/eval_p14_goker.json
-scp -P 22206 -i ~/.ssh/id_runpod root@157.157.221.29:/root/rollout_results.json eval/results/rollout_p15_goker.json
-scp -P 22206 -i ~/.ssh/id_runpod -r root@157.157.221.29:/root/lora_adapter_kl dataset/output/lora_adapter_kl
-```
-
-### 2. Collect Gemini Pro results
-- `eval/gemini_zeroshot_goker.py --models gemini-3.1-pro-preview --no-thinking` running locally
-- Update STATUS.md + README.md with final numbers
-
-### 3. Upload Phase 14 adapter to HuggingFace
-- `dataset/output/lora_adapter_kl/` → `kavirubc/weave-ccwm-qwen2.5-coder-7b-kl-lora`
-- Script: `uv run python scripts/upload_model_hf.py`
-
-### 4. Upload updated dataset to HuggingFace
-- GoKer-split JSONL with `program_id`/`split_percent` fields → `kavirubc/weave-bench`
-- Script: `uv run python scripts/upload_dataset_hf.py`
-
-### 5. Merge PR #13 and open Phase 14 PR
-- PR #13 covers Phases 13–15 (branch `phase-13-unsloth-7b`)
-- Merge after training results are confirmed
+### 3. Target a venue
+- Paper is complete with all results; consider submitting to a workshop or conference
+- Candidates: PLDI, ASPLOS, ICSE, or a concurrency/PL workshop
+- Gather feedback from arXiv first
 
 ---
 

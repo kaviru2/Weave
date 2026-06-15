@@ -2,6 +2,8 @@
 
 **Kaviru Hapuarachchi** · [huggingface.co/kavirubc](https://huggingface.co/kavirubc) · [github.com/kaviru2/Weave](https://github.com/kaviru2/Weave)
 
+**Preprint:** [doi.org/10.5281/zenodo.20682004](https://doi.org/10.5281/zenodo.20682004)
+
 ---
 
 ## Abstract
@@ -35,9 +37,12 @@ detectable from partial traces — a formal consequence of the goroutine's state
 | Qwen2.5-Coder-1.5B zero-shot | in-distribution | event_type accuracy | 29.8% |
 | Qwen2.5-Coder-1.5B fine-tuned (Phase 12) | in-distribution | event_type accuracy | 40.2% |
 | Qwen2.5-Coder-7B zero-shot | GoKer held-out | event_type accuracy | 28.6% |
+| Gemini 3.5 Flash zero-shot (no thinking) | GoKer held-out | event_type accuracy | 35.2% |
 | **Gemini 3.5 Flash zero-shot (thinking=auto)** | **GoKer held-out** | **event_type accuracy** | **34.8%** |
-| **Qwen2.5-Coder-7B fine-tuned (Phase 13)** | **GoKer held-out** | **event_type accuracy** | **36.2%** |
-| Qwen2.5-Coder-7B KL-trained (Phase 14) | GoKer held-out | event_type accuracy | pending |
+| **Qwen2.5-Coder-7B fine-tuned CE (Phase 13)** | **GoKer held-out** | **event_type accuracy** | **36.2%** |
+| **Qwen2.5-Coder-7B KL-trained (Phase 14)** | **GoKer held-out** | **event_type accuracy** | **35.8%** |
+| Multi-step coherence probe — leak programs (Phase 15) | GoKer held-out | mean survival steps | 1.11 |
+| Multi-step coherence probe — race programs (Phase 15) | GoKer held-out | mean survival steps | 0.67 |
 | Distribution prompting, no thinking (Phase 7) | in-distribution | ECE | 0.183 |
 | Distribution prompting, thinking=1024 (Phase 7) | in-distribution | ECE | **0.169** |
 | Point-prediction baseline ECE (Phase 4) | in-distribution | ECE | 0.205 |
@@ -91,10 +96,11 @@ nondeterministic interleavings. GoKer programs are held out entirely from traini
 | Model | HuggingFace | Notes |
 |-------|-------------|-------|
 | Weave-CCWM 1.5B (Phase 12) | [kavirubc/weave-ccwm-qwen2.5-coder-1.5b-lora](https://huggingface.co/kavirubc/weave-ccwm-qwen2.5-coder-1.5b-lora) | QLoRA on Qwen2.5-Coder-1.5B, 40.2% in-dist |
-| **Weave-CCWM 7B (Phase 13)** | *(uploading)* | QLoRA on Qwen2.5-Coder-7B via Unsloth, **36.2% GoKer held-out** |
+| **Weave-CCWM 7B CE (Phase 13)** | [kavirubc/weave-ccwm-qwen2.5-coder-7b-lora](https://huggingface.co/kavirubc/weave-ccwm-qwen2.5-coder-7b-lora) | QLoRA on Qwen2.5-Coder-7B via Unsloth, **36.2% GoKer held-out** |
+| **Weave-CCWM 7B KL (Phase 14)** | [kavirubc/weave-ccwm-qwen2.5-coder-7b-kl-lora](https://huggingface.co/kavirubc/weave-ccwm-qwen2.5-coder-7b-kl-lora) | KL distribution loss, **35.8% GoKer held-out**, ECE 0.169 |
 
 Phase 13 training: 3 epochs, batch=1, grad_accum=8, seq_len=4096, LoRA r=16/α=32.
-RTX 4000 Ada (20GB), ~2h 11min. Train loss: 0.058.
+RTX 4000 Ada (20GB), ~2h 11min. Train loss: 0.058. Total compute: ~$12.
 
 ---
 
@@ -170,7 +176,7 @@ weave/
     analyze/analyze.go         — accuracy report (Phase 5)
     dist_zero_shot.py          — distribution calibration eval (Phase 7)
     dirichlet_analysis.py      — anomaly scores, leak signatures (Phase 8)
-    simulation_rollout.py      — autoregressive trajectory rollout (Phase 15, planned)
+    simulation_rollout.py      — autoregressive trajectory rollout (Phase 15)
   scripts/
     runpod_deploy.sh           — one-command RunPod deploy (7B defaults)
     runpod_pod.sh              — pod-side Unsloth training + eval script
@@ -197,10 +203,10 @@ weave/
 
 ## Limitations and Future Work
 
-- **Phase 14 — Distribution-loss training (in progress):** Training the 7B model with KL divergence against empirical next-event distributions (`aggregated.json`). Custom `KLTrainer` in `dataset/train_lora_kl.py`. Results pending.
-- **Phase 15 — Autoregressive rollout (script ready):** Multi-step trajectory simulation (`eval/simulation_rollout.py`) will run automatically after Phase 14 on the same pod.
-- Gemini 3.1 Pro zero-shot baseline on GoKer pending.
-- Ballerina extension: requires WSO2 conversation (strand-local state richer than goroutine scheduler events).
+- **Accuracy ceiling at 35–36%:** Three approaches (CE fine-tuning, KL fine-tuning, Gemini zero-shot) all converge near 36%. Rare event types (GoEnd, GoSched) are never predicted; distribution shift between hand-crafted training and real GoKer programs explains part of the gap.
+- **Multi-step coherence breaks after ~1 step:** The model was trained on single-step prediction; autoregressive rollout produces scheduler-invalid transitions after roughly one step.
+- **Ballerina extension:** Requires WSO2 conversation for server access and a Ballerina tracer. Next major research phase.
+- **arXiv submission pending** endorsement (cs.PL primary, cs.SE cross-list).
 
 ---
 
@@ -217,10 +223,14 @@ weave/
 ## Citation
 
 ```bibtex
-@misc{weave2026,
-  author = {Hapuarachchi, Kaviru},
-  title  = {Weave: Concurrent Code World Models},
-  year   = {2026},
-  url    = {https://github.com/kaviru2/Weave}
+@misc{hapuarachchi2026weave,
+  title     = {When the Next Step Is Not One Step: Distribution-Aware
+               Execution Modeling for Concurrent Go Programs},
+  author    = {Hapuarachchi, Kaviru},
+  year      = {2026},
+  publisher = {Zenodo},
+  doi       = {10.5281/zenodo.20682004},
+  url       = {https://doi.org/10.5281/zenodo.20682004},
+  note      = {Preprint}
 }
 ```
