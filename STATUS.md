@@ -4,6 +4,9 @@
 
 ## Current State
 
+**Paper submitted as preprint** to Zenodo (DOI: 10.5281/zenodo.20682004) and pending
+arXiv endorsement (cs.PL primary, cs.SE cross-list). Paper source in `LaTexPackage-1/`.
+
 **Phase 14 KL training IN PROGRESS** on RTX 4000 Ada (pod `weave p14515`,
 `157.157.221.29:22206`, key `~/.ssh/id_runpod`). Estimated ~4h 50min total, ~$1.30.
 Phase 15 rollout script written and will auto-run on the same pod after training.
@@ -109,7 +112,9 @@ scp -P 22206 -i ~/.ssh/id_runpod -r root@157.157.221.29:/root/lora_adapter_kl da
 | Eval results (1.5B fine-tuned, in-dist) | `eval/results/eval_results_runpod.json` (40.2%) |
 | HF model (1.5B CE) | https://huggingface.co/kavirubc/weave-ccwm-qwen2.5-coder-1.5b-lora |
 | HF model (7B CE, Phase 13) | https://huggingface.co/kavirubc/weave-ccwm-qwen2.5-coder-7b-lora |
+| HF model (7B KL, Phase 14) | https://huggingface.co/kavirubc/weave-ccwm-qwen2.5-coder-7b-kl-lora |
 | HF dataset | https://huggingface.co/datasets/kavirubc/weave-bench |
+| Preprint (Zenodo) | https://doi.org/10.5281/zenodo.20682004 |
 
 ---
 
