@@ -79,45 +79,36 @@ transformers==4.46.3  peft==0.13.2  trl==0.11.4  bitsandbytes==0.44.1  accelerat
 
 ---
 
-## Current Phase: Building the CCWM
+## Target Venue & Submission Info
 
-The goal is a **Concurrent Code World Model** — a model trained on execution traces that
-learns the concurrent state transition function, enabling it to simulate program execution,
-detect bugs from partial traces, and produce calibrated uncertainty over nondeterministic
-next states.
+* **Venue**: ICSE 2027 NIER (New Ideas and Emerging Results)
+* **Deadline**: Fri 23 Oct 2026 (AoE) (Acceptance notification: 18 Dec 2026)
+* **Format**: Strictly **4 pages main text** (everything inclusive) + **1 page references**
+* **Template**: IEEEtran 10pt conference template (`\documentclass[10pt,conference]{IEEEtran}`, no compsoc options)
+* **Anonymization**: Strict double-anonymous review. No author names, third-person self-citations, and no mention of "submitted to ICSE 2027" on public preprints (like arXiv).
+* **Required Section**: Must contain a dedicated **"Future Plans"** section outlining how the emerging idea/results will scale to a full paper.
 
-**Pipeline status:**
+## Current Phase: Strengthening the NIER Submission (Phase 16)
 
-1. ✅ **Trace collection** — `tracer/` collects goroutine scheduler events from Go programs
-2. ✅ **Dataset** — 377 eval examples (26 programs × 5 runs × 3 splits), 75 aggregated groups
-3. ✅ **Zero-shot baseline** — 56% event_type accuracy, 0% bug detection (Gemini, Phase 4/5)
-4. ✅ **Distribution learning** — ECE 0.205 → 0.169 with thinking budget; Dirichlet analysis done
-5. ✅ **LoRA fine-tuning** — 91.7% val token accuracy (Qwen2.5-Coder-1.5B, QLoRA, Phase 10)
-6. **Autoregressive rollout** — use fine-tuned model to simulate multi-step execution trajectories
-7. **Distribution-trained model** — train with KL loss against empirical distributions (not CE)
-8. **Scale up** — larger model (7B+) on RunPod/WSO2 infrastructure
-9. **Ballerina** — extend to Ballerina concurrent programs (requires WSO2 conversation)
+The primary goal is to target ICSE 2027 NIER using our existing results from **Phases 1–15** as the core "promising initial results." We are executing **Phase 16** to provide one critical piece of empirical evidence that directly addresses the project's most significant known limitation before writing the paper.
 
-**Phase 13 complete. Immediate next steps (Phase 14+):**
-1. **Finish pending baselines**:
-   - Qwen2.5-Coder-7B zero-shot on GoKer held-out set (currently running on RunPod)
-   - Gemini zero-shot on GoKer val set — run `eval/zero_shot.go` or `eval/dist_zero_shot.py` pointed at `val_point_dups.jsonl`
-2. **Upload Phase 13 artifacts to HuggingFace**:
-   - 7B adapter: `dataset/output/lora_adapter_v3/` → `kavirubc/weave-ccwm-qwen2.5-coder-7b-lora`
-   - Dataset with GoKer split: `dataset/output/kaggle_upload/` → `kavirubc/weave-bench`
-3. **Phase 14 — Distribution-loss training**:
-   - Train the 7B model using KL divergence against empirical probability distributions in `aggregated.json` instead of point prediction cross-entropy.
-   - Implement `dataset/train_lora_kl.py` with a custom KL loss trainer.
-   - This is the core research contribution: training with uncertainty targets derived from nondeterministic execution.
-4. **Phase 15 — Autoregressive rollout** (`eval/simulation_rollout.py`):
-   - Perform multi-step trajectory simulation to evaluate trajectory divergence on GoKer.
+### Phase 16: Trajectory-Level Training for Coherent Rollouts
+We have selected **Candidate A: Trajectory-level training** as our focus.
 
-**Compute strategy:** RTX 4000 Ada (20GB, ~$0.76/hr) for 7B Unsloth training. SSH key: `~/.ssh/id_runpod`.
-
+* **The Problem**: While the model achieves ~36.2% accuracy on single-step prediction OOD (GoKer), its multi-step autoregressive rollout (coherence) is highly fragile, surviving for an average of only ~1 step before generating invalid states or diverging. This is the project's weakest claim and most flagrant limitation for a "world model."
+* **The Solution**: Instead of training on single-step point state transitions, we will train the model on short rolled-out trajectories (3–5 steps). This teaches the model to model sequence coherence and mitigate error accumulation over multi-step rolls.
+* **Why this was selected over alternatives**:
+  * **vs. Candidate B (Encode channel/mutex state)**: Native Go runtime tracing (`runtime/trace`) does not expose internal channel buffers or mutex holder IDs. Rebuilding the tracer to capture this would require custom instrumentation of the Go runtime or complex source-to-source code rewrite. The cost/engineering overhead is extremely high risk for our timeframe and resources.
+  * **vs. Candidate C (Scale GoKer-disjoint set)**: Modestly scaling the training set via synthetic programs might marginally increase single-step OOD accuracy (the ~36% ceiling), but it doesn't solve the core conceptual limitation of multi-step divergence. A "world model" that cannot roll out is not a world model.
+  * **Feasibility**: We already have a functioning training pipeline using Unsloth/QLoRA on RTX 4000 Ada (RunPod). Structuring target sequences into multi-step paths requires data-formatting changes rather than invasive system-level modifications. We estimate 2–3 weeks of development and compute time.
+* **Definition of "Done" for Phase 16**:
+  1. Train the Qwen2.5-Coder-7B model on multi-step trajectory sequences (length 3–5 steps).
+  2. Re-run the Phase 15 coherence probe on this trajectory-trained model.
+  3. Achieve a **mean survival step rate of >= 3 steps** (a 3x improvement over the current ~1 step baseline) or a statistically significant improvement in survival compared to the single-step model.
 
 ---
 
-## Completed Phases (1–10)
+## Completed Phases (1–15)
 
 All phases done and merged to main. See STATUS.md for full details.
 
@@ -135,10 +126,18 @@ All phases done and merged to main. See STATUS.md for full details.
 - **Phase 11** — `programs/gen_* + goker_*` — Dataset expansion to 130 programs (26 hand-crafted + 38 generated + 66 GoKer)
 - **Phase 12** — Truncation fix + retrain on A40; 40.2% in-distribution accuracy (Qwen2.5-Coder-1.5B)
 - **Phase 13** — GoKer held-out split + Unsloth 7B training; **36.2% on GoKer held-out** (Qwen2.5-Coder-7B, RTX 4000 Ada)
+- **Phase 14** — `dataset/train_lora_kl.py` — custom KL divergence distribution-loss training; ECE 0.169, 35.8% accuracy on GoKer OOD
+- **Phase 15** — `eval/simulation_rollout.py` — autoregressive rollout coherence evaluation (mean survival ~1 step)
 
 ## Your Job Right Now
 
-The pipeline is complete. WSO2 research proposal is the next step.
+We are in the **planning and setup phase** for the ICSE 2027 NIER submission.
+1. **Setting up the template**: Unzip and arrange the IEEEtran LaTeX conference template files and bibliography files in `LaTexPackage-1/IEEEtran/`. (Done)
+2. **Reviewing the plan**: Present the retargeting plan to the user. Do **not** initiate Phase 16 training or write code yet.
+3. **Next Session (Future work)**:
+   - Implement Phase 16 (trajectory-level dataset generation and fine-tuning).
+   - Write the NIER paper draft in `LaTexPackage-1/IEEEtran/` (strict 4+1 page limit, including the required "Future Plans" section).
+
 Original Phase specs preserved below for reference.
 
 ### Phase 6 — Dataset Aggregation
