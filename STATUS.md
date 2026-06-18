@@ -26,21 +26,25 @@ in paper and preprint.
 | Qwen2.5-Coder-1.5B (fine-tuned, Phase 12) | in-distribution | 40.2% | After truncation bug fix |
 | **Qwen2.5-Coder-7B (zero-shot)** | GoKer held-out | **28.6%** | Corrected from 0.0% (markdown-fence bug) |
 | **Gemini 3.5 Flash (zero-shot, thinking=auto)** | **GoKer held-out** | **34.8%** | Beats 7B zero-shot, below fine-tuned |
-| **Qwen2.5-Coder-7B (fine-tuned, Phase 13)** | **GoKer held-out** | **36.2%** | **Best OOD result — fine-tuning beats Gemini Flash** |
+| **Qwen2.5-Coder-7B (fine-tuned, Phase 13)** | **GoKer held-out** | **36.2%** | Fine-tuning beats Gemini Flash |
 | Gemini 3.5 Flash, no thinking | GoKer held-out | 35.2% | Slightly above thinking variant |
 | **Qwen2.5-Coder-7B KL-trained (Phase 14)** | GoKer held-out | **35.8%** | Matches CE, better calibration |
+| **Qwen2.5-Coder-7B traj-trained (Phase 16)** | **GoKer held-out** | **40.1%** | **Best OOD result — trajectory training beats all prior models** |
 
 **Key comparison:** Fine-tuned 7B (36.2%) > Gemini Flash zero-shot (34.8%) > 7B zero-shot (28.6%).
 Training on 945 hand-crafted trace examples generalises better to real-world bugs than a large
 general model zero-shot.
 
-**Phase 16 — Trajectory training coherence results:**
+**Phase 16 — Trajectory training results (coherence + accuracy):**
 
-| Model | Mean Survival Steps | Programs ≥5 steps | Notes |
-|-------|--------------------|--------------------|-------|
-| Qwen2.5-Coder-7B KL-trained (Phase 15 baseline) | ~1.0 | — | Single-step training |
-| **Qwen2.5-Coder-7B traj-trained (Phase 16)** | **10.48** | **54/54 (100%)** | 3–5 step trajectory training |
+| Model | Single-step Accuracy | Mean Survival Steps | Notes |
+|-------|---------------------|---------------------|-------|
+| Qwen2.5-Coder-7B KL-trained (Phase 14/15) | 35.8% | ~1.0 | Single-step training |
+| **Qwen2.5-Coder-7B traj-trained (Phase 16)** | **40.1%** | **10.48** | 3–5 step trajectory training |
 
+Trajectory training is a **strict improvement**: better single-step accuracy (+3.9pp over Phase 13) AND dramatically better coherence (10x survival steps). No tradeoff.
+
+Breakdown by pattern: channel 34.3%, mutex 40.7%, select 41.8%
 Leak programs: 10.8 mean survival | Race programs: 9.76 mean survival | Entropy ~1.49 bits
 
 ---
@@ -119,11 +123,14 @@ Leak programs: 10.8 mean survival | Race programs: 9.76 mean survival | Entropy 
 
 ## Compute
 
-**RunPod** is the primary GPU compute.
+**RunPod** is the primary GPU compute. SSH key: always `~/.ssh/id_runpod` (ignore what the pod UI shows).
+Template: `runpod-torch-v240`. Set `HF_HOME=/workspace/hf_cache` on pod before downloading models.
+tmux not pre-installed — use `nohup ... &` or install it first.
 
-**Phase 14 (current):** `USE_KL=1 RUNPOD_IP=<ip> RUNPOD_PORT=<port> RUNPOD_KEY=~/.ssh/id_runpod bash scripts/runpod_deploy.sh`
+**Deploy training:** `RUNPOD_IP=<ip> RUNPOD_PORT=<port> RUNPOD_KEY=~/.ssh/id_runpod bash scripts/runpod_deploy.sh`
+**Deploy eval:** `RUNPOD_IP=<ip> RUNPOD_PORT=<port> RUNPOD_KEY=~/.ssh/id_runpod bash scripts/runpod_eval_traj.sh`
 
 **GPU guidance (current pricing):**
-- RTX 4000 Ada (20GB, ~$0.27/hr) — 7B QLoRA via Unsloth, proven for Phase 13/14
-- A40 (48GB, ~$0.44/hr) — used for Phase 12; good fallback if RTX 4000 Ada unavailable
+- RTX 4000 Ada (20GB, ~$0.26/hr) — first choice; Phases 13, 16
+- A40 (48GB, ~$0.44/hr) — fallback if RTX 4000 Ada unavailable; Phase 12
 - SSH key: `~/.ssh/id_runpod`
