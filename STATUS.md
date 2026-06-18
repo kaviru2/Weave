@@ -2,6 +2,9 @@
 
 > Read this first when picking up on a new machine. Then read CLAUDE.md for the full plan.
 
+### Recent Updates & Changelog
+- **2026-06-18**: Retargeted Weave from WSO2 research proposal / generic venue to **ICSE 2027 NIER** (New Ideas and Emerging Results). Given the modest scale of our corpus (130 programs) and the openly-reported 35-36% accuracy ceiling, the NIER track's framing of "honest limitations + concrete future work" is a much better fit than the main Research Track. We will focus our next effort on **Phase 16** (Trajectory-level training) to strengthen our multi-step coherence evidence before writing.
+
 ## Current State
 
 **Paper published.** Preprint live on Zenodo (DOI: 10.5281/zenodo.20682004).
@@ -61,24 +64,28 @@ general model zero-shot.
 - [x] Phase 13 — GoKer held-out split + Unsloth 7B training (36.2% GoKer OOD)
 - [x] **Phase 14 — KL distribution-loss training (35.8% GoKer, ECE 0.169)**
 - [x] Phase 15 — Autoregressive rollout (coherence probe: ~1 step survival)
+- [ ] Phase 16 — Trajectory-Level Training (train on short 3–5 step rolled-out trajectories to improve coherence survival rate)
 
 ---
 
 ## Immediate Next Steps
 
-### 1. Get arXiv endorsed and submit
-- Endorsement code sent; follow up if no response within a few days
-- Once endorsed, submit `LaTexPackage-1/weave.tex` compiled PDF to arXiv (cs.PL + cs.SE)
-- Update Zenodo record to link the arXiv ID once assigned
+### 1. Phase 16: Trajectory-Level Training
+- Modify dataset generator to produce rolled-out trajectories of length 3–5 steps instead of single-step transitions.
+- Train Qwen2.5-Coder-7B using the existing KL-divergence distribution loss trainer on these trajectories on RunPod.
+- Evaluate the new model using `eval/simulation_rollout.py` (coherence probe) and verify if the mean survival step rate reaches >= 3.
 
-### 2. Extend to Ballerina (Phase 16)
-- Requires WSO2 conversation for server access and Ballerina tracer work
-- This is the next major research phase
+### 2. Write and Format the NIER Submission
+- Port the paper content from the Springer `svproc` format (`LaTexPackage-1/weave.tex`) to the new IEEEtran 10pt conference format (`LaTexPackage-1/IEEEtran/IEEE-conference-template-062824.tex`).
+- Strict limit: **4 pages main text + 1 page references**.
+- Add the required **"Future Plans"** section outlining how Weave scales to a full paper (e.g., extending to Ballerina, capturing mutex/channel buffer state, etc.).
+- Ensure strict adherence to double-anonymous guidelines (no author names, third-person self-citation, etc.).
 
-### 3. Target a venue
-- Paper is complete with all results; consider submitting to a workshop or conference
-- Candidates: PLDI, ASPLOS, ICSE, or a concurrency/PL workshop
-- Gather feedback from arXiv first
+### 3. Submission Details (ICSE 2027 NIER)
+- **Venue**: ICSE 2027 NIER (New Ideas and Emerging Results)
+- **Deadline**: Fri 23 Oct 2026 (AoE)
+- **Format**: Strictly 4 pages main text + 1 page references (IEEEtran 10pt conference template, no compsoc options)
+- **Anonymization**: Double-anonymous review guidelines apply. No mention of "submitted to ICSE 2027" on public preprints.
 
 ---
 
