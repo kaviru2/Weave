@@ -47,16 +47,26 @@ PREDICT_SUFFIX = (
     '"goroutine_id":<integer>}'
 )
 
+# Cap the seed trace to the last N events so all turns in a trajectory see
+# a consistent context size.  Keeps the most recent scheduler state visible.
+MAX_SEED_EVENTS = 10
+
 
 # ── Prompt construction ────────────────────────────────────────────────────────
 
-def _user_turn(program_source: str, partial_trace: List[Dict[str, Any]]) -> str:
+def _user_turn(program_source: str, partial_trace: List[Dict[str, Any]],
+               truncate_program: bool = False) -> str:
+    src = program_source
+    if truncate_program:
+        lines = src.split("\n")
+        if len(lines) > 30:
+            src = "\n".join(lines[:30]) + "\n... [TRUNCATED] ..."
     trace_json = json.dumps(partial_trace, indent=2)
     current_state_json = json.dumps(partial_trace[-1], indent=2) if partial_trace else "{}"
     return (
         "You are reasoning about concurrent Go program execution.\n\n"
         "Here is a Go program:\n"
-        f"<program>\n{program_source}\n</program>\n\n"
+        f"<program>\n{src}\n</program>\n\n"
         "Here is a partial execution trace showing goroutine scheduler events so far:\n"
         f"<trace>\n{trace_json}\n</trace>\n\n"
         "The current goroutine states are:\n"
@@ -72,44 +82,6 @@ def _assistant_turn(event: Dict[str, Any]) -> str:
     })
 
 
-# ── Token-aware truncation (only applied to the first user turn) ───────────────
-
-def _truncate_first_user_turn(content: str, max_chars: int = 8000) -> str:
-    """Trim program and trace sections if the first user turn is too long."""
-    if len(content) <= max_chars:
-        return content
-
-    # Shorten program to first 30 lines
-    import re
-    prog_m = re.search(r"(<program>\n)(.*?)(\n</program>)", content, re.DOTALL)
-    if prog_m:
-        lines = prog_m.group(2).split("\n")
-        if len(lines) > 30:
-            short = "\n".join(lines[:30]) + "\n... [TRUNCATED] ..."
-            content = content[:prog_m.start(2)] + short + content[prog_m.end(2):]
-
-    if len(content) <= max_chars:
-        return content
-
-    # Shorten trace to last 8 events
-    trace_m = re.search(r"(<trace>\n)(.*?)(\n</trace>)", content, re.DOTALL)
-    if trace_m:
-        try:
-            events = json.loads(trace_m.group(2))
-            if len(events) > 8:
-                slim = [
-                    {"event_id": e.get("event_id"), "event_type": e.get("event_type"),
-                     "goroutine_id": e.get("goroutine_id")}
-                    for e in events[-8:]
-                ]
-                short_trace = json.dumps(slim, indent=2)
-                content = content[:trace_m.start(2)] + short_trace + content[trace_m.end(2):]
-        except Exception:
-            pass
-
-    return content
-
-
 # ── Trajectory builder ─────────────────────────────────────────────────────────
 
 def build_trajectory(
@@ -120,20 +92,21 @@ def build_trajectory(
     """
     Returns a single multi-turn messages dict.
     Each (user, assistant) pair extends the trace by one event.
+
+    The seed trace is capped to MAX_SEED_EVENTS so all turns in a trajectory
+    see a consistent context window — avoids the first-turn truncation diverging
+    from subsequent turns.
     """
     messages = [{"role": "system", "content": SYSTEM_MSG}]
-    current_trace = list(seed_trace)
+    # Cap seed to last MAX_SEED_EVENTS for consistent context across all turns
+    current_trace = list(seed_trace[-MAX_SEED_EVENTS:])
+    # Truncate program source on long programs to keep total length manageable
+    truncate_prog = len(program_source.split("\n")) > 30
 
-    for i, event in enumerate(step_events):
-        user_content = _user_turn(program_source, current_trace)
-        # Only truncate the first user turn (the heaviest one — program + full seed trace)
-        if i == 0:
-            user_content = _truncate_first_user_turn(user_content)
-
+    for event in step_events:
+        user_content = _user_turn(program_source, current_trace, truncate_program=truncate_prog)
         messages.append({"role": "user", "content": user_content})
         messages.append({"role": "assistant", "content": _assistant_turn(event)})
-
-        # Extend the trace with the ground-truth event for the next turn
         current_trace = current_trace + [event]
 
     return {"messages": messages}
