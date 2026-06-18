@@ -38,6 +38,11 @@ echo "========================================"
 
 # ── Install Unsloth and compatible deps ───────────────────────────────────────
 echo ""
+# Redirect HF cache to volume so model weights don't fill the 20GB root disk
+export HF_HOME=/workspace/hf_cache
+mkdir -p /workspace/hf_cache
+echo "HF_HOME set to /workspace/hf_cache"
+
 echo "Installing Unsloth + deps..."
 # Let pip resolve all versions — unsloth manages its own transformers/tokenizers constraints
 pip install -q unsloth trl peft accelerate bitsandbytes datasets

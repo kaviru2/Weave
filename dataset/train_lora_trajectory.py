@@ -34,7 +34,7 @@ def train(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     from datasets import load_dataset
-    from trl import SFTTrainer, SFTConfig, DataCollatorForCompletionOnlyLM
+    from trl import SFTTrainer, SFTConfig
 
     logging.info(f"Loading model: {args.model_id}  (4-bit, seq={args.max_seq_length})")
     model, tokenizer = FastLanguageModel.from_pretrained(
@@ -76,14 +76,6 @@ def train(args: argparse.Namespace) -> None:
 
     dataset = dataset.map(apply_template, num_proc=2)
 
-    # Only compute loss on assistant responses, not on the user trace context.
-    # Qwen2.5 chat template wraps assistant turns with <|im_start|>assistant\n
-    response_template = "<|im_start|>assistant\n"
-    collator = DataCollatorForCompletionOnlyLM(
-        response_template=response_template,
-        tokenizer=tokenizer,
-    )
-
     training_args = SFTConfig(
         output_dir=args.output_dir,
         num_train_epochs=args.epochs,
@@ -113,7 +105,6 @@ def train(args: argparse.Namespace) -> None:
         tokenizer=tokenizer,
         train_dataset=dataset["train"],
         eval_dataset=dataset["validation"],
-        data_collator=collator,
         args=training_args,
     )
 
