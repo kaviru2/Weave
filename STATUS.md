@@ -3,6 +3,7 @@
 > Read this first when picking up on a new machine. Then read CLAUDE.md for the full plan.
 
 ### Recent Updates & Changelog
+- **2026-06-18**: **Phase 16 complete.** Trajectory-trained model achieves **10.48 mean survival steps** (baseline ~1.0, target ≥3) — 10x improvement. All 54 GoKer programs survive ≥5 steps. Adapter: `kavirubc/weave-ccwm-qwen2.5-coder-7b-traj-lora`.
 - **2026-06-18**: arXiv preprint live at https://arxiv.org/abs/2606.17508 (cs.PL primary, cs.SE cross-list). Retargeted Weave to **ICSE 2027 NIER** (New Ideas and Emerging Results). Given the modest scale of our corpus (130 programs) and the openly-reported 35-36% accuracy ceiling, the NIER track's framing of "honest limitations + concrete future work" is a much better fit than the main Research Track. Will focus next on **Phase 16** (Trajectory-level training) to strengthen multi-step coherence evidence before writing.
 
 ## Current State
@@ -32,6 +33,17 @@ in paper and preprint.
 **Key comparison:** Fine-tuned 7B (36.2%) > Gemini Flash zero-shot (34.8%) > 7B zero-shot (28.6%).
 Training on 945 hand-crafted trace examples generalises better to real-world bugs than a large
 general model zero-shot.
+
+**Phase 16 — Trajectory training coherence results:**
+
+| Model | Mean Survival Steps | Programs ≥5 steps | Notes |
+|-------|--------------------|--------------------|-------|
+| Qwen2.5-Coder-7B KL-trained (Phase 15 baseline) | ~1.0 | — | Single-step training |
+| **Qwen2.5-Coder-7B traj-trained (Phase 16)** | **10.48** | **54/54 (100%)** | 3–5 step trajectory training |
+
+Leak programs: 10.8 mean survival | Race programs: 9.76 mean survival | Entropy ~1.49 bits
+
+---
 
 **Distribution learning results (Phase 7–8):**
 
@@ -63,18 +75,13 @@ general model zero-shot.
 - [x] Phase 13 — GoKer held-out split + Unsloth 7B training (36.2% GoKer OOD)
 - [x] **Phase 14 — KL distribution-loss training (35.8% GoKer, ECE 0.169)**
 - [x] Phase 15 — Autoregressive rollout (coherence probe: ~1 step survival)
-- [ ] Phase 16 — Trajectory-Level Training (train on short 3–5 step rolled-out trajectories to improve coherence survival rate)
+- [x] **Phase 16 — Trajectory-Level Training: mean survival 10.48 steps (10x over baseline ~1.0, target was ≥3)**
 
 ---
 
 ## Immediate Next Steps
 
-### 1. Phase 16: Trajectory-Level Training
-- Modify dataset generator to produce rolled-out trajectories of length 3–5 steps instead of single-step transitions.
-- Train Qwen2.5-Coder-7B using the existing KL-divergence distribution loss trainer on these trajectories on RunPod.
-- Evaluate the new model using `eval/simulation_rollout.py` (coherence probe) and verify if the mean survival step rate reaches >= 3.
-
-### 2. Write and Format the NIER Submission
+### 1. Write and Format the NIER Submission
 - Port the paper content from the Springer `svproc` format (`LaTexPackage-1/weave.tex`) to the new IEEEtran 10pt conference format (`LaTexPackage-1/IEEEtran/IEEE-conference-template-062824.tex`).
 - Strict limit: **4 pages main text + 1 page references**.
 - Add the required **"Future Plans"** section outlining how Weave scales to a full paper (e.g., extending to Ballerina, capturing mutex/channel buffer state, etc.).
@@ -92,6 +99,8 @@ general model zero-shot.
 
 | Artifact | Location |
 |----------|----------|
+| **LoRA adapter (Phase 16, 7B traj)** | `dataset/output/lora_adapter_traj/` |
+| **Rollout results (Phase 16)** | `eval/results/rollout_results_traj.json` (10.48 mean survival) |
 | LoRA adapter (Phase 12, 1.5B) | `dataset/output/lora_adapter_v2/` |
 | LoRA adapter (Phase 13, 7B CE) | `dataset/output/lora_adapter_v3/` (154MB) |
 | **LoRA adapter (Phase 14, 7B KL)** | `dataset/output/lora_adapter_kl/` (pending download) |
@@ -102,6 +111,7 @@ general model zero-shot.
 | HF model (1.5B CE) | https://huggingface.co/kavirubc/weave-ccwm-qwen2.5-coder-1.5b-lora |
 | HF model (7B CE, Phase 13) | https://huggingface.co/kavirubc/weave-ccwm-qwen2.5-coder-7b-lora |
 | HF model (7B KL, Phase 14) | https://huggingface.co/kavirubc/weave-ccwm-qwen2.5-coder-7b-kl-lora |
+| **HF model (7B traj, Phase 16)** | https://huggingface.co/kavirubc/weave-ccwm-qwen2.5-coder-7b-traj-lora |
 | HF dataset | https://huggingface.co/datasets/kavirubc/weave-bench |
 | Preprint (Zenodo) | https://doi.org/10.5281/zenodo.20682004 |
 
