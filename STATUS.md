@@ -3,12 +3,11 @@
 > Read this first when picking up on a new machine. Then read CLAUDE.md for the full plan.
 
 ### Recent Updates & Changelog
-- **2026-06-18**: Retargeted Weave from WSO2 research proposal / generic venue to **ICSE 2027 NIER** (New Ideas and Emerging Results). Given the modest scale of our corpus (130 programs) and the openly-reported 35-36% accuracy ceiling, the NIER track's framing of "honest limitations + concrete future work" is a much better fit than the main Research Track. We will focus our next effort on **Phase 16** (Trajectory-level training) to strengthen our multi-step coherence evidence before writing.
+- **2026-06-18**: arXiv preprint live at https://arxiv.org/abs/2606.17508 (cs.PL primary, cs.SE cross-list). Retargeted Weave to **ICSE 2027 NIER** (New Ideas and Emerging Results). Given the modest scale of our corpus (130 programs) and the openly-reported 35-36% accuracy ceiling, the NIER track's framing of "honest limitations + concrete future work" is a much better fit than the main Research Track. Will focus next on **Phase 16** (Trajectory-level training) to strengthen multi-step coherence evidence before writing.
 
 ## Current State
 
-**Paper published.** Preprint live on Zenodo (DOI: 10.5281/zenodo.20682004).
-arXiv endorsement pending (cs.PL primary, cs.SE cross-list) — endorsement code sent.
+**Paper published.** Preprint live on Zenodo (DOI: 10.5281/zenodo.20682004) and arXiv (arXiv:2606.17508).
 Paper source and PDF in `LaTexPackage-1/`.
 
 **Phases 14 + 15 complete.** KL model: 35.8% on GoKer held-out. Multi-step coherence
