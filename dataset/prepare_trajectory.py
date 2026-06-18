@@ -124,7 +124,8 @@ def _load(path: str) -> Optional[Dict[str, Any]]:
 
 # ── Main ───────────────────────────────────────────────────────────────────────
 
-def main(min_steps: int = 3, max_steps: int = 5) -> None:
+def main(min_steps: int = 3, max_steps: int = 5,
+         output_train: str = None, output_val: str = None) -> None:
     logging.info(f"Building trajectory dataset (min={min_steps}, max={max_steps} steps)...")
 
     train_items: List[Dict] = []
@@ -184,8 +185,8 @@ def main(min_steps: int = 3, max_steps: int = 5) -> None:
             built += 1
 
     # Write output
-    out_train = os.path.join(DATA_DIR, "train_trajectory.jsonl")
-    out_val   = os.path.join(DATA_DIR, "val_trajectory.jsonl")
+    out_train = output_train or os.path.join(DATA_DIR, "train_trajectory.jsonl")
+    out_val   = output_val   or os.path.join(DATA_DIR, "val_trajectory.jsonl")
 
     for path, items in [(out_train, train_items), (out_val, val_items)]:
         with open(path, "w") as f:
@@ -211,5 +212,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--min-steps", type=int, default=3)
     parser.add_argument("--max-steps", type=int, default=5)
+    parser.add_argument("--output-train", default=None,
+                        help="Override output path for train JSONL (default: dataset/output/train_trajectory.jsonl)")
+    parser.add_argument("--output-val",   default=None,
+                        help="Override output path for val JSONL (default: dataset/output/val_trajectory.jsonl)")
     args = parser.parse_args()
-    main(args.min_steps, args.max_steps)
+    main(args.min_steps, args.max_steps, args.output_train, args.output_val)
