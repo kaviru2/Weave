@@ -3,8 +3,9 @@
 > Read this first when picking up on a new machine. Then read CLAUDE.md for the full plan.
 
 ### Recent Updates & Changelog
+- **2026-06-19**: **Phase 17 complete.** Ablation A: 40.1%, Ablation B: 35.3%. **Conclusion: gain is entirely from trajectory format (multi-turn structure), not step count or training volume.** Single-step trajectory = full 3–5 step model. 2×2 table + analysis in RESULTS.md.
 - **2026-06-18**: **Phase 16 complete.** Trajectory-trained model achieves **10.48 mean survival steps** (baseline ~1.0, target ≥3) — 10x improvement. All 54 GoKer programs survive ≥5 steps. Adapter: `kavirubc/weave-ccwm-qwen2.5-coder-7b-traj-lora`.
-- **2026-06-18**: arXiv preprint live at https://arxiv.org/abs/2606.17508 (cs.PL primary, cs.SE cross-list). Retargeted Weave to **ICSE 2027 NIER** (New Ideas and Emerging Results). Given the modest scale of our corpus (130 programs) and the openly-reported 35-36% accuracy ceiling, the NIER track's framing of "honest limitations + concrete future work" is a much better fit than the main Research Track. Will focus next on **Phase 16** (Trajectory-level training) to strengthen multi-step coherence evidence before writing.
+- **2026-06-18**: arXiv preprint live at https://arxiv.org/abs/2606.17508 (cs.PL primary, cs.SE cross-list). Retargeted Weave to **ICSE 2027 NIER** (New Ideas and Emerging Results). Given the modest scale of our corpus (130 programs) and the openly-reported 35-36% accuracy ceiling, the NIER track's framing of "honest limitations + concrete future work" is a much better fit than the main Research Track. Phase 17 ablations will provide mechanistic understanding for Research Track abstract (due Jun 23) and full paper (due ~Jul 1).
 
 ## Current State
 
@@ -80,22 +81,36 @@ Leak programs: 10.8 mean survival | Race programs: 9.76 mean survival | Entropy 
 - [x] **Phase 14 — KL distribution-loss training (35.8% GoKer, ECE 0.169)**
 - [x] Phase 15 — Autoregressive rollout (coherence probe: ~1 step survival)
 - [x] **Phase 16 — Trajectory-Level Training: mean survival 10.48 steps (10x over baseline ~1.0, target was ≥3)**
+- [x] **Phase 17 — Ablation Experiments: Why does trajectory training work? (2×2 matrix)**
+  - Ablation A (1-step traj): 40.1% | Ablation B (point 6ep): 35.3%
+  - **Finding: gain is from trajectory format (multi-turn structure), not step count or volume**
+  - All results, adapters, and eval JSONs downloaded locally. Analysis in RESULTS.md.
 
 ---
 
 ## Immediate Next Steps
 
-### 1. Write and Format the NIER Submission
-- Port the paper content from the Springer `svproc` format (`LaTexPackage-1/weave.tex`) to the new IEEEtran 10pt conference format (`LaTexPackage-1/IEEEtran/IEEE-conference-template-062824.tex`).
-- Strict limit: **4 pages main text + 1 page references**.
-- Add the required **"Future Plans"** section outlining how Weave scales to a full paper (e.g., extending to Ballerina, capturing mutex/channel buffer state, etc.).
-- Ensure strict adherence to double-anonymous guidelines (no author names, third-person self-citation, etc.).
+### 0. Phase 17 Ablations — COMPLETE ✅
+- **Result:** Trajectory format drives all improvement. Format effect: +3.9pp. Step-count effect: 0pp. Volume effect: −0.9pp.
+- **Adapters:** `dataset/output/lora_ablation_1step/`, `dataset/output/lora_ablation_point6ep/`
+- **Eval results:** `eval/results/eval_ablation_1step.json`, `eval/results/eval_ablation_point6ep.json`
 
-### 3. Submission Details (ICSE 2027 NIER)
-- **Venue**: ICSE 2027 NIER (New Ideas and Emerging Results)
-- **Deadline**: Fri 23 Oct 2026 (AoE)
-- **Format**: Strictly 4 pages main text + 1 page references (IEEEtran 10pt conference template, no compsoc options)
-- **Anonymization**: Double-anonymous review guidelines apply. No mention of "submitted to ICSE 2027" on public preprints.
+### 1. Write Research Track Abstract (Due Jun 23, 4 days)
+- **Length:** 300-500 words
+- **Content:** Headline result (40.1% + 10.48 survival), ablation insights, novelty claim
+- **Submission:** ACM Research Track or alternative venue TBD
+- **Note:** Will have ablation results to cite as evidence of mechanistic understanding
+
+### 2. Write and Format the NIER Submission (Due Oct 23, ~4 months)
+- Port content from Springer `svproc` format to IEEEtran 10pt conference format (`LaTexPackage-1/IEEEtran/`).
+- Strict limit: **4 pages main text + 1 page references**.
+- Add required **"Future Plans"** section outlining scaling to Ballerina, mutex/channel buffer state, etc.
+- Double-anonymous: no author names, third-person self-citation.
+
+### 3. ICSE Submission Details
+- **NIER Track:** Fri 23 Oct 2026 (AoE) | **Research Track abstract:** Jun 23 2026 | **Research Track full:** ~Jul 1 2026
+- **NIER Format:** 4 + 1 pages, IEEEtran 10pt (no compsoc)
+- **Research Track:** TBD (likely 8-10 pages)
 
 ---
 
