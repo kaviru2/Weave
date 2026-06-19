@@ -51,22 +51,48 @@ See STATUS.md for current state and immediate next steps.
 
 ## Compute Infrastructure
 
-**RunPod** is the primary GPU compute for training. See `RUNPOD_STATUS.md` for current pod info.
+**RunPod** is the primary GPU compute for training and eval.
+
+**SSH key:** Always use `~/.ssh/id_runpod` — this is the key registered in the RunPod account.
+(Public key: `ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHHXUJRiDtYdu9XlcMM9Hp6JrXcyUgjvLgYDFJ3awZCv runpod-weave`)
+The pod UI may show `id_ed25519` in the connect string — ignore that, `id_runpod` is the correct key.
+
+**Template:** Always use `runpod-torch-v240` (PyTorch 2.4.x pre-installed). tmux is NOT pre-installed — use `nohup ... &` to background long-running jobs, or install tmux via `apt-get install -y tmux` first.
+
+**Storage layout — critical:** Each pod has two separate 20GB storage areas:
+- **Container disk** (`/`, 20GB) — fast local SSD, holds OS + pip packages + uploaded files. Do NOT store model weights here — it will fill up and kill the job.
+- **Network volume** (`/workspace`, 20GB) — persistent, survives pod restarts. Store all large files here.
+
+Always set `HF_HOME=/workspace/hf_cache` before any HuggingFace downloads so the 7B+ base model weights land on the network volume, not the container disk. Example:
+```bash
+export HF_HOME=/workspace/hf_cache
+mkdir -p /workspace/hf_cache
+```
+Uploaded data files (`/root/*.jsonl`, `/root/lora_adapter_traj/`) are small (<200MB total) and are fine on the container disk.
 
 **Deploy a new training run:**
 ```bash
-RUNPOD_IP=<ip> RUNPOD_PORT=<port> bash scripts/runpod_deploy.sh
+RUNPOD_IP=<ip> RUNPOD_PORT=<port> RUNPOD_KEY=~/.ssh/id_runpod bash scripts/runpod_deploy.sh
 ```
-This handles SCP, dep install, and tmux launch automatically. SSH key: `~/.ssh/id_runpod`
-(public key `ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHHXUJRiDtYdu9XlcMM9Hp6JrXcyUgjvLgYDFJ3awZCv runpod-weave` must be in RunPod account settings).
 
-**GPU selection (cost guidance):**
-- **RTX 4000 Ada (20GB, ~$0.76/hr)** — recommended for 1.5B–3B QLoRA; more cost-effective than A40
-- **A40 (48GB, ~$1.28/hr)** — used for Phase 12; good for up to 7B QLoRA
-- **A100-40GB (~$1.49/hr on Modal)** — use for 7B+ or when batch size matters
+**Deploy eval-only (trajectory model accuracy):**
+```bash
+RUNPOD_IP=<ip> RUNPOD_PORT=<port> RUNPOD_KEY=~/.ssh/id_runpod bash scripts/runpod_eval_traj.sh
+```
+This uploads the local traj adapter + val data and runs `run_eval.py`. Results download:
+```bash
+scp -P <port> -i ~/.ssh/id_runpod root@<ip>:/root/eval_results_traj.json eval/results/eval_results_traj_accuracy.json
+```
+
+**Adapter strategy:** For large adapters already on HuggingFace, prefer downloading on the pod via `huggingface-cli download` rather than SCP-ing from local. For small adapters (<200MB) local SCP is fine.
+
+**GPU selection (current pricing):**
+- **RTX 4000 Ada (20GB, ~$0.26/hr)** — first choice for 7B QLoRA and eval; Phases 13, 16
+- **A40 (48GB, ~$0.44/hr)** — fallback when RTX 4000 Ada unavailable; Phase 12
+- **RTX 5090 (32GB, ~$0.99/hr)** — available option if needed, more expensive
 
 **Unsloth** (`pip install unsloth`) — 2× faster training + 60% less VRAM via fused kernels.
-Drop-in replacement for standard HuggingFace training. Use for future runs:
+Drop-in replacement for standard HuggingFace training:
 ```python
 from unsloth import FastLanguageModel  # replaces AutoModelForCausalLM
 ```

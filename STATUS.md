@@ -3,8 +3,9 @@
 > Read this first when picking up on a new machine. Then read CLAUDE.md for the full plan.
 
 ### Recent Updates & Changelog
+- **2026-06-19**: **Phase 17 complete.** Ablation A: 40.1%, Ablation B: 35.3%. **Conclusion: gain is entirely from trajectory format (multi-turn structure), not step count or training volume.** Single-step trajectory = full 3–5 step model. 2×2 table + analysis in RESULTS.md.
 - **2026-06-18**: **Phase 16 complete.** Trajectory-trained model achieves **10.48 mean survival steps** (baseline ~1.0, target ≥3) — 10x improvement. All 54 GoKer programs survive ≥5 steps. Adapter: `kavirubc/weave-ccwm-qwen2.5-coder-7b-traj-lora`.
-- **2026-06-18**: arXiv preprint live at https://arxiv.org/abs/2606.17508 (cs.PL primary, cs.SE cross-list). Retargeted Weave to **ICSE 2027 NIER** (New Ideas and Emerging Results). Given the modest scale of our corpus (130 programs) and the openly-reported 35-36% accuracy ceiling, the NIER track's framing of "honest limitations + concrete future work" is a much better fit than the main Research Track. Will focus next on **Phase 16** (Trajectory-level training) to strengthen multi-step coherence evidence before writing.
+- **2026-06-18**: arXiv preprint live at https://arxiv.org/abs/2606.17508 (cs.PL primary, cs.SE cross-list). Retargeted Weave to **ICSE 2027 NIER** (New Ideas and Emerging Results). Given the modest scale of our corpus (130 programs) and the openly-reported 35-36% accuracy ceiling, the NIER track's framing of "honest limitations + concrete future work" is a much better fit than the main Research Track. Phase 17 ablations will provide mechanistic understanding for Research Track abstract (due Jun 23) and full paper (due ~Jul 1).
 
 ## Current State
 
@@ -26,21 +27,25 @@ in paper and preprint.
 | Qwen2.5-Coder-1.5B (fine-tuned, Phase 12) | in-distribution | 40.2% | After truncation bug fix |
 | **Qwen2.5-Coder-7B (zero-shot)** | GoKer held-out | **28.6%** | Corrected from 0.0% (markdown-fence bug) |
 | **Gemini 3.5 Flash (zero-shot, thinking=auto)** | **GoKer held-out** | **34.8%** | Beats 7B zero-shot, below fine-tuned |
-| **Qwen2.5-Coder-7B (fine-tuned, Phase 13)** | **GoKer held-out** | **36.2%** | **Best OOD result — fine-tuning beats Gemini Flash** |
+| **Qwen2.5-Coder-7B (fine-tuned, Phase 13)** | **GoKer held-out** | **36.2%** | Fine-tuning beats Gemini Flash |
 | Gemini 3.5 Flash, no thinking | GoKer held-out | 35.2% | Slightly above thinking variant |
 | **Qwen2.5-Coder-7B KL-trained (Phase 14)** | GoKer held-out | **35.8%** | Matches CE, better calibration |
+| **Qwen2.5-Coder-7B traj-trained (Phase 16)** | **GoKer held-out** | **40.1%** | **Best OOD result — trajectory training beats all prior models** |
 
 **Key comparison:** Fine-tuned 7B (36.2%) > Gemini Flash zero-shot (34.8%) > 7B zero-shot (28.6%).
 Training on 945 hand-crafted trace examples generalises better to real-world bugs than a large
 general model zero-shot.
 
-**Phase 16 — Trajectory training coherence results:**
+**Phase 16 — Trajectory training results (coherence + accuracy):**
 
-| Model | Mean Survival Steps | Programs ≥5 steps | Notes |
-|-------|--------------------|--------------------|-------|
-| Qwen2.5-Coder-7B KL-trained (Phase 15 baseline) | ~1.0 | — | Single-step training |
-| **Qwen2.5-Coder-7B traj-trained (Phase 16)** | **10.48** | **54/54 (100%)** | 3–5 step trajectory training |
+| Model | Single-step Accuracy | Mean Survival Steps | Notes |
+|-------|---------------------|---------------------|-------|
+| Qwen2.5-Coder-7B KL-trained (Phase 14/15) | 35.8% | ~1.0 | Single-step training |
+| **Qwen2.5-Coder-7B traj-trained (Phase 16)** | **40.1%** | **10.48** | 3–5 step trajectory training |
 
+Trajectory training is a **strict improvement**: better single-step accuracy (+3.9pp over Phase 13) AND dramatically better coherence (10x survival steps). No tradeoff.
+
+Breakdown by pattern: channel 34.3%, mutex 40.7%, select 41.8%
 Leak programs: 10.8 mean survival | Race programs: 9.76 mean survival | Entropy ~1.49 bits
 
 ---
@@ -76,22 +81,36 @@ Leak programs: 10.8 mean survival | Race programs: 9.76 mean survival | Entropy 
 - [x] **Phase 14 — KL distribution-loss training (35.8% GoKer, ECE 0.169)**
 - [x] Phase 15 — Autoregressive rollout (coherence probe: ~1 step survival)
 - [x] **Phase 16 — Trajectory-Level Training: mean survival 10.48 steps (10x over baseline ~1.0, target was ≥3)**
+- [x] **Phase 17 — Ablation Experiments: Why does trajectory training work? (2×2 matrix)**
+  - Ablation A (1-step traj): 40.1% | Ablation B (point 6ep): 35.3%
+  - **Finding: gain is from trajectory format (multi-turn structure), not step count or volume**
+  - All results, adapters, and eval JSONs downloaded locally. Analysis in RESULTS.md.
 
 ---
 
 ## Immediate Next Steps
 
-### 1. Write and Format the NIER Submission
-- Port the paper content from the Springer `svproc` format (`LaTexPackage-1/weave.tex`) to the new IEEEtran 10pt conference format (`LaTexPackage-1/IEEEtran/IEEE-conference-template-062824.tex`).
-- Strict limit: **4 pages main text + 1 page references**.
-- Add the required **"Future Plans"** section outlining how Weave scales to a full paper (e.g., extending to Ballerina, capturing mutex/channel buffer state, etc.).
-- Ensure strict adherence to double-anonymous guidelines (no author names, third-person self-citation, etc.).
+### 0. Phase 17 Ablations — COMPLETE ✅
+- **Result:** Trajectory format drives all improvement. Format effect: +3.9pp. Step-count effect: 0pp. Volume effect: −0.9pp.
+- **Adapters:** `dataset/output/lora_ablation_1step/`, `dataset/output/lora_ablation_point6ep/`
+- **Eval results:** `eval/results/eval_ablation_1step.json`, `eval/results/eval_ablation_point6ep.json`
 
-### 3. Submission Details (ICSE 2027 NIER)
-- **Venue**: ICSE 2027 NIER (New Ideas and Emerging Results)
-- **Deadline**: Fri 23 Oct 2026 (AoE)
-- **Format**: Strictly 4 pages main text + 1 page references (IEEEtran 10pt conference template, no compsoc options)
-- **Anonymization**: Double-anonymous review guidelines apply. No mention of "submitted to ICSE 2027" on public preprints.
+### 1. Write Research Track Abstract (Due Jun 23, 4 days)
+- **Length:** 300-500 words
+- **Content:** Headline result (40.1% + 10.48 survival), ablation insights, novelty claim
+- **Submission:** ACM Research Track or alternative venue TBD
+- **Note:** Will have ablation results to cite as evidence of mechanistic understanding
+
+### 2. Write and Format the NIER Submission (Due Oct 23, ~4 months)
+- Port content from Springer `svproc` format to IEEEtran 10pt conference format (`LaTexPackage-1/IEEEtran/`).
+- Strict limit: **4 pages main text + 1 page references**.
+- Add required **"Future Plans"** section outlining scaling to Ballerina, mutex/channel buffer state, etc.
+- Double-anonymous: no author names, third-person self-citation.
+
+### 3. ICSE Submission Details
+- **NIER Track:** Fri 23 Oct 2026 (AoE) | **Research Track abstract:** Jun 23 2026 | **Research Track full:** ~Jul 1 2026
+- **NIER Format:** 4 + 1 pages, IEEEtran 10pt (no compsoc)
+- **Research Track:** TBD (likely 8-10 pages)
 
 ---
 
@@ -119,11 +138,14 @@ Leak programs: 10.8 mean survival | Race programs: 9.76 mean survival | Entropy 
 
 ## Compute
 
-**RunPod** is the primary GPU compute.
+**RunPod** is the primary GPU compute. SSH key: always `~/.ssh/id_runpod` (ignore what the pod UI shows).
+Template: `runpod-torch-v240`. Set `HF_HOME=/workspace/hf_cache` on pod before downloading models.
+tmux not pre-installed — use `nohup ... &` or install it first.
 
-**Phase 14 (current):** `USE_KL=1 RUNPOD_IP=<ip> RUNPOD_PORT=<port> RUNPOD_KEY=~/.ssh/id_runpod bash scripts/runpod_deploy.sh`
+**Deploy training:** `RUNPOD_IP=<ip> RUNPOD_PORT=<port> RUNPOD_KEY=~/.ssh/id_runpod bash scripts/runpod_deploy.sh`
+**Deploy eval:** `RUNPOD_IP=<ip> RUNPOD_PORT=<port> RUNPOD_KEY=~/.ssh/id_runpod bash scripts/runpod_eval_traj.sh`
 
 **GPU guidance (current pricing):**
-- RTX 4000 Ada (20GB, ~$0.27/hr) — 7B QLoRA via Unsloth, proven for Phase 13/14
-- A40 (48GB, ~$0.44/hr) — used for Phase 12; good fallback if RTX 4000 Ada unavailable
+- RTX 4000 Ada (20GB, ~$0.26/hr) — first choice; Phases 13, 16
+- A40 (48GB, ~$0.44/hr) — fallback if RTX 4000 Ada unavailable; Phase 12
 - SSH key: `~/.ssh/id_runpod`
