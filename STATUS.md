@@ -3,18 +3,23 @@
 > Read this first when picking up on a new machine. Then read CLAUDE.md for the full plan.
 
 ### Recent Updates & Changelog
+- **2026-06-22**: **Pivoted back to ICSE 2027 NIER (single target).** Dropped the Research Track attempt — the corpus scale (130 programs) and the ~36–40% accuracy ceiling fit NIER's "honest limitations + future work" framing far better. `weave-nier/main.tex` is now the canonical paper (4 pages main + 1 page refs, IEEEtran 10pt); `weave-research/` is archived for reference. Runway: ~4 months to the **Fri 23 Oct 2026** NIER deadline. Budget for any new experiment: **~$20 RunPod + ~$10 Gemini**. Phase 19 strengthening candidates (costed menu) added to CLAUDE.md — pick at most one before finalizing the paper.
+- **2026-06-19**: **Related works research complete.** `related_works.md` created with 19 verified external citations (all titles/authors/venues/URLs confirmed). Organized into 4 narrative sections with draft "USE:" sentences ready to paste into paper. See "Paper Writing" section in CLAUDE.md for how to use it.
+- **2026-06-19**: **Phase 18 complete.** Gemini Flash re-eval: 35.8% (no thinking). McNemar traj vs Phase13 CE: p=0.016 ✅ CI [+1.0, +8.3pp]. McNemar traj vs Gemini Flash: p=0.069 ❌ not significant, CI [-0.18, +8.77pp]. GoCreate +24pp is the entire source of the 4.6pp gain. Majority-class baseline: 35.5%. Gemini 3.1 Pro eval running (thinking=auto) — pending final comparison. `phase18_numbers.json` saved.
 - **2026-06-19**: **Phase 17 complete.** Ablation A: 40.1%, Ablation B: 35.3%. **Conclusion: gain is entirely from trajectory format (multi-turn structure), not step count or training volume.** Single-step trajectory = full 3–5 step model. 2×2 table + analysis in RESULTS.md.
 - **2026-06-18**: **Phase 16 complete.** Trajectory-trained model achieves **10.48 mean survival steps** (baseline ~1.0, target ≥3) — 10x improvement. All 54 GoKer programs survive ≥5 steps. Adapter: `kavirubc/weave-ccwm-qwen2.5-coder-7b-traj-lora`.
 - **2026-06-18**: arXiv preprint live at https://arxiv.org/abs/2606.17508 (cs.PL primary, cs.SE cross-list). Retargeted Weave to **ICSE 2027 NIER** (New Ideas and Emerging Results). Given the modest scale of our corpus (130 programs) and the openly-reported 35-36% accuracy ceiling, the NIER track's framing of "honest limitations + concrete future work" is a much better fit than the main Research Track. Phase 17 ablations will provide mechanistic understanding for Research Track abstract (due Jun 23) and full paper (due ~Jul 1).
 
 ## Current State
 
-**Paper published.** Preprint live on Zenodo (DOI: 10.5281/zenodo.20682004) and arXiv (arXiv:2606.17508).
-Paper source and PDF in `LaTexPackage-1/`.
+**Target: ICSE 2027 NIER (single track). Phases 1–18 complete.** Canonical paper:
+`ICSE 2027_Templates/weave-nier/main.tex` (4 pages main + 1 page refs). Research Track draft
+archived at `ICSE 2027_Templates/weave-research/`. Active work: finalize the NIER paper;
+optionally run one Phase 19 strengthening experiment first (~$20 RunPod + ~$10 Gemini).
 
-**Phases 14 + 15 complete.** KL model: 35.8% on GoKer held-out. Multi-step coherence
-probe: mean survival ~1 step, entropy 0.945 bits (leak) vs 0.773 bits (race). All results
-in paper and preprint.
+**Preprint** live on Zenodo (DOI: 10.5281/zenodo.20682004) and arXiv (arXiv:2606.17508).
+Headline results locked: traj 7B **40.1%** GoKer OOD, **10.48** mean survival steps,
+McNemar vs single-step **p=0.016**, GoCreate **+24pp**, majority baseline 35.5%.
 
 ---
 
@@ -91,26 +96,34 @@ Leak programs: 10.8 mean survival | Race programs: 9.76 mean survival | Entropy 
 ## Immediate Next Steps
 
 ### 0. Phase 17 Ablations — COMPLETE ✅
-- **Result:** Trajectory format drives all improvement. Format effect: +3.9pp. Step-count effect: 0pp. Volume effect: −0.9pp.
-- **Adapters:** `dataset/output/lora_ablation_1step/`, `dataset/output/lora_ablation_point6ep/`
-- **Eval results:** `eval/results/eval_ablation_1step.json`, `eval/results/eval_ablation_point6ep.json`
+- Format effect: +3.9pp | Step-count: 0pp | Volume: −0.9pp
 
-### 1. Write Research Track Abstract (Due Jun 23, 4 days)
-- **Length:** 300-500 words
-- **Content:** Headline result (40.1% + 10.48 survival), ablation insights, novelty claim
-- **Submission:** ACM Research Track or alternative venue TBD
-- **Note:** Will have ablation results to cite as evidence of mechanistic understanding
+### 0b. Phase 18 Statistical Analysis — COMPLETE ✅
+- [x] Majority-class baseline: **35.5%** (traj model +4.6pp above)
+- [x] Training frequency: GoCreate 0.9% train vs 21.2% val — explains ceiling; GoSched/GoEnd also underrepresented
+- [x] McNemar traj vs Phase 13 CE: **p=0.016 ✅**, 95% CI [+1.0, +8.3pp]
+- [x] Per-event breakdown: **GoCreate +24pp** is the entire source of gain
+- [x] GoStart/GoBlock confusion: 198 pairs, model anchors on prior event
+- [x] McNemar traj vs Gemini Flash (35.8%, no thinking): **p=0.069 ❌** not significant, CI [−0.18, +8.77pp]
+- [ ] Gemini 3.1 Pro baseline: **partial (36.4% on 253/798), budget-gated** — finish only if Phase 19 #3 is chosen (~$10 Gemini)
+- **Script:** `eval/phase18_analysis.py` | **Output:** `eval/results/phase18_numbers.json`
 
-### 2. Write and Format the NIER Submission (Due Oct 23, ~4 months)
-- Port content from Springer `svproc` format to IEEEtran 10pt conference format (`LaTexPackage-1/IEEEtran/`).
+### 1. (Optional) Pick one Phase 19 strengthening experiment
+- **Decision menu** lives in CLAUDE.md → "Phase 19 — NIER Strengthening Candidates".
+- Pick **at most one**, within ~$20 RunPod + ~$10 Gemini. Recommended default: stratified-sampling retrain (#1, ~$4) + free formal select-block proposition (#4) + finish Gemini 3.1 Pro baseline (#3) as budget allows.
+- The specific choice is deferred to a dedicated exploration session — start it by verifying `prepare_trajectory.py` / the state-prompt builder expose the hooks candidates 1–2 assume.
+
+### 2. Finalize the NIER Submission (Due Fri 23 Oct 2026, ~4 months)
+- Canonical paper: `ICSE 2027_Templates/weave-nier/main.tex` (IEEEtran 10pt, already 4+1).
 - Strict limit: **4 pages main text + 1 page references**.
-- Add required **"Future Plans"** section outlining scaling to Ballerina, mutex/channel buffer state, etc.
+- Add required **"Future Plans"** section outlining scaling to Ballerina, mutex/channel buffer state, stratified sampling.
 - Double-anonymous: no author names, third-person self-citation.
+- Related work is done — use `related_works.md`; do NOT re-research citations.
 
 ### 3. ICSE Submission Details
-- **NIER Track:** Fri 23 Oct 2026 (AoE) | **Research Track abstract:** Jun 23 2026 | **Research Track full:** ~Jul 1 2026
-- **NIER Format:** 4 + 1 pages, IEEEtran 10pt (no compsoc)
-- **Research Track:** TBD (likely 8-10 pages)
+- **NIER deadline:** Fri 23 Oct 2026 (AoE) — the single target.
+- **Format:** 4 pages main + 1 page references, IEEEtran 10pt (no compsoc), double-anonymous.
+- The Research Track attempt is dropped; its draft is archived at `ICSE 2027_Templates/weave-research/` (see its `ARCHIVED.md`).
 
 ---
 

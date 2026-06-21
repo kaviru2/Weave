@@ -29,12 +29,12 @@ Weave's research questions:
 > bug detection than point-prediction models. Nobody has done this — it is a direct
 > consequence of concurrent execution being nondeterministic.
 
-Phases 1–13 complete. Phase 14 KL distribution-loss training currently running on RunPod
-(RTX 4000 Ada). Phase 15 rollout script written and runs automatically after Phase 14.
+Phases 1–18 in progress. All training complete. Current focus: statistical analysis (Phase 18) and paper writing.
 
-Key results so far: fine-tuned 7B 36.2% > Gemini Flash zero-shot 34.8% > 7B zero-shot 28.6%
-on GoKer held-out. Fine-tuning on 945 hand-crafted examples beats large model zero-shot on
-real-world concurrent bugs.
+Key results: traj 7B **40.1%** > Phase13 CE 7B 35.5% > Gemini Flash 34.8% > 7B zero-shot 28.6% on GoKer held-out.
+McNemar traj vs Phase13: p=0.016 ✅. GoCreate +24pp is the entire source of the 4.6pp gain.
+Majority-class baseline (always GoStart): 35.5% — traj model is only model to clearly beat it.
+Trajectory training: 10.48 mean survival steps (10× over baseline). Format effect confirmed by Phase 17 ablations.
 
 See STATUS.md for current state and immediate next steps.
 
@@ -107,18 +107,28 @@ transformers==4.46.3  peft==0.13.2  trl==0.11.4  bitsandbytes==0.44.1  accelerat
 
 ## Target Venue & Submission Info
 
-* **Venue**: ICSE 2027 NIER (New Ideas and Emerging Results)
-* **Deadline**: Fri 23 Oct 2026 (AoE) (Acceptance notification: 18 Dec 2026)
-* **Format**: Strictly **4 pages main text** (everything inclusive) + **1 page references**
-* **Template**: IEEEtran 10pt conference template (`\documentclass[10pt,conference]{IEEEtran}`, no compsoc options)
-* **Anonymization**: Strict double-anonymous review. No author names, third-person self-citations, and no mention of "submitted to ICSE 2027" on public preprints (like arXiv).
-* **Required Section**: Must contain a dedicated **"Future Plans"** section outlining how the emerging idea/results will scale to a full paper.
+* **Venue**: ICSE 2027 **NIER** (New Ideas and Emerging Results)
+* **Pivot note (2026-06-22)**: We previously drafted a full Research Track paper, but the corpus scale (130 programs) and the openly-reported ~36–40% accuracy ceiling fit the NIER track's "honest limitations + concrete future work" framing far better. **NIER is now the single target.** The Research Track draft is archived (see below), not active.
+* **NIER deadline**: Fri 23 Oct 2026 AoE (~4 months from the pivot date)
+* **Format**: **4 pages main text** + **1 page references only** (IEEEtran 10pt, `\documentclass[10pt,conference]{IEEEtran}`, no compsoc options)
+* **Anonymization**: Strict double-anonymous. No author names, third-person self-citations, no mention of "submitted to ICSE 2027" on arXiv.
+* **Track area**: Likely **Testing and Analysis** (concurrent program analysis, program simulation) or **AI for Software Engineering** (LLM fine-tuning, execution modeling). Indicate one primary, one secondary.
+* **Paper folder (canonical)**: `ICSE 2027_Templates/weave-nier/main.tex` — Overleaf-ready, IEEEtran 4+1.
+* **Research folder** (archived, superseded): `ICSE 2027_Templates/weave-research/` — kept for reference only. Mine its expanded Related Work, the formal select-block proposition, and longer prose into the NIER version; do not submit it. See its `ARCHIVED.md`.
 
-## Current Phase: Strengthening the NIER Submission (Phase 16)
+## Current Phase: Finalize the NIER Paper (+ optional Phase 19 strengthening)
 
-The primary goal is to target ICSE 2027 NIER using our existing results from **Phases 1–15** as the core "promising initial results." We are executing **Phase 16** to provide one critical piece of empirical evidence that directly addresses the project's most significant known limitation before writing the paper.
+**Phases 1–18 are complete.** The active work is now: (1) finalize the NIER submission from
+`ICSE 2027_Templates/weave-nier/main.tex` (4 pages main + 1 page refs, IEEEtran 10pt,
+double-anonymous), and (2) optionally run **one** budget-bounded strengthening experiment
+(Phase 19 — see "Phase 19 — NIER Strengthening Candidates" below) before writing finishes.
+Budget envelope for any new experiment: **~$20 RunPod + ~$10 Gemini** total.
 
-### Phase 16: Trajectory-Level Training for Coherent Rollouts
+The headline results are locked: 40.1% next-event accuracy, 10.48 mean survival steps,
+McNemar p=0.016 vs single-step, GoCreate +24pp, the three-class limitation taxonomy. The
+NIER framing leans into honest limitations + concrete future work.
+
+### Phase 16 (DONE): Trajectory-Level Training for Coherent Rollouts
 We have selected **Candidate A: Trajectory-level training** as our focus.
 
 * **The Problem**: While the model achieves ~36.2% accuracy on single-step prediction OOD (GoKer), its multi-step autoregressive rollout (coherence) is highly fragile, surviving for an average of only ~1 step before generating invalid states or diverging. This is the project's weakest claim and most flagrant limitation for a "world model."
@@ -157,12 +167,183 @@ All phases done and merged to main. See STATUS.md for full details.
 
 ## Your Job Right Now
 
-We are in the **planning and setup phase** for the ICSE 2027 NIER submission.
-1. **Setting up the template**: Unzip and arrange the IEEEtran LaTeX conference template files and bibliography files in `LaTexPackage-1/IEEEtran/`. (Done)
-2. **Reviewing the plan**: Present the retargeting plan to the user. Do **not** initiate Phase 16 training or write code yet.
-3. **Next Session (Future work)**:
-   - Implement Phase 16 (trajectory-level dataset generation and fine-tuning).
-   - Write the NIER paper draft in `LaTexPackage-1/IEEEtran/` (strict 4+1 page limit, including the required "Future Plans" section).
+**Target = ICSE 2027 NIER. Phases 1–18 complete. Finalize the NIER paper; optionally run one Phase 19 experiment first.**
+
+### State as of the pivot (2026-06-22)
+- Phases 1–18 all done. Headline results locked (see "Key numbers" table below).
+- Research Track draft archived; `weave-nier/main.tex` is the canonical paper.
+- Phase 18 statistical analysis complete; `phase18_numbers.json` saved.
+- Gemini 3.1 Pro baseline eval was partial (36.4% on 253/798) and is now budget-gated (~$10 Gemini left). The paper must read correctly whether or not it is completed — see "Two Scenarios" below.
+
+### Immediately next
+1. **Decide Phase 19** (optional, budget ~$20 RunPod + ~$10 Gemini): pick at most one strengthening experiment from "Phase 19 — NIER Strengthening Candidates" below. The specific choice is deliberately deferred to a dedicated exploration session — start there by verifying the scripts the candidates assume actually expose the needed hooks.
+2. **Finalize the NIER paper** from `ICSE 2027_Templates/weave-nier/main.tex` (4 pages main + 1 page refs, IEEEtran 10pt, double-anonymous):
+   - Key numbers: 40.1% accuracy, 10.48 survival steps, p=0.016 (McNemar), GoCreate +24pp, majority baseline 35.5%
+   - Remaining gaps to address: select-block theorem (state as formal Proposition), GoCreate imbalance framing
+   - **Related work is done**: use `related_works.md` (see below) — do NOT re-research citations
+3. **Submit** by Fri 23 Oct 2026 AoE. Add the required NIER **"Future Plans"** section (Ballerina extension, mutex/channel buffer state, stratified sampling).
+
+### Paper Writing — How to Use related_works.md
+
+`related_works.md` contains **19 verified external citations** with accurate titles, authors, venues, years, and links. Use it as follows:
+
+**Structure of the file:**
+- **Section A** (cwm, debugcwm, exectuning, codeexec) → paragraph on "Code World Models and Program Execution Modeling"
+- **Section B** (concur, jainpurandare) → paragraph on "LLMs for Concurrent Code"
+- **Section C** (goker, gobench, gcatch, gfuzz, gopie) → paragraph on "Go Concurrency Bug Analysis and Tools"
+- **Section D** (hinton, diffuse, guocalib, probcalib, spiess) → paragraph on "Distribution Training and Calibration"
+- **Section E** (lora, qlora, qwen) → cite in Method section, not Related Work
+
+**Each paper entry has:**
+- Full accurate citation (copy directly into BibTeX)
+- "What it does" — 2-sentence summary for your own reference
+- "USE:" — a draft sentence showing how to cite it in the paper; paste and edit
+
+**Key framing for each section (the gap your paper fills):**
+- After Section A: "All prior execution-trace models assume deterministic sequential execution."
+- After Section B: "Neither benchmarks execution as a transition function nor addresses nondeterministic scheduling."
+- After Section C: "These tools treat nondeterminism as a search space; we treat it as a distributional training signal."
+- After Section D: "In prior work, soft targets come from a teacher model. Ours come from the nondeterminism of the program itself."
+
+**Do NOT add more citations** — 19 external papers is appropriate for a 4-page NIER. Adding more would look like padding.
+
+---
+
+## Phase 19 — NIER Strengthening Candidates (costed menu; decision deferred)
+
+A decision **menu**, not a commitment. Pick **at most one** before finalizing the paper.
+Budget envelope: RTX 4000 Ada ≈ $0.26/hr → ~$20 ≈ 75 GPU-hr; a Phase 13/16 train+eval cycle
+is ~2–4 hr ≈ $1–2, so realistically **2–4 new training cycles** total. Gemini ~$10.
+Candidates drawn from STATUS.md "Open Questions" / the three-class limitation taxonomy,
+ranked by impact-per-dollar:
+
+1. **Stratified-sampling retrain (Class-1 fix) — strongest single bet.** Oversample
+   GoEnd/GoSched/GoUnblock in `prepare_trajectory.py`, retrain the traj model, re-eval on the
+   same 798 GoKer held-out set. Target: lift GoEnd/GoSched off 0% and raise the structural
+   ceiling above 40.1%. Cost ~1 train+eval cycle (~$2–4). Converts the paper's biggest stated
+   limitation into a positive result.
+2. **`blocked_on` state representation (Class-3 fix).** Add the `blocked_on` field to the
+   prompt state, retrain, measure the GoStart/GoBlock confusion drop (currently 24.8% of all
+   errors). Cost ~1 train+eval cycle. Higher risk — may not move the needle.
+3. **Finish Gemini 3.1 Pro baseline.** Complete the eval stalled at 253/798 so the
+   frontier-model comparison is whole (decides Scenario A vs B). Cost: the whole ~$10 Gemini
+   budget. Pure baseline, no new capability.
+4. **Formal select-block proposition (zero compute).** Promote the P(GoUnblock)=0
+   select-block finding to a stated Proposition with proof sketch (already drafted in the
+   archived research paper — mine it). Free; strengthens rigor.
+5. **Stronger coherence metric (low compute).** Compare rollout event distribution against
+   actual Go tracer runs on GoKer programs (local Go, no GPU). Free-ish; turns the
+   FSM-validity lower bound into a distributional claim.
+
+**Recommended default if forced to pick:** #1 (stratified retrain) + #4 (free proposition) +
+as-budget-allows #3. Spends ~$4 RunPod, converts the single largest limitation into a result,
+and keeps the zero-cost rigor wins. **The exact choice is deferred to a dedicated exploration
+session** — its first task is to verify `prepare_trajectory.py` / the state-prompt builder
+actually expose the hooks candidates 1–2 assume.
+
+---
+
+## Paper Framing — Two Scenarios (Gemini 3.1 Pro result pending)
+
+These are the two NIER central-claim framings, selected once the Gemini 3.1 Pro baseline is
+known. The Pro eval is now **budget-gated** (~$10 Gemini): it may be completed (Phase 19
+candidate #3) or may stay at the partial 36.4% on 253/798. The paper must read correctly
+either way — if Pro is not finished, report it honestly as a partial frontier baseline and
+lead on the Phase 13 McNemar (p=0.016), which is the strongest fully-powered comparison.
+
+### Scenario A: Gemini 3.1 Pro scores BELOW 40.1%
+
+**Central claim:** Task-specific trajectory fine-tuning on 945 examples outperforms frontier models used zero-shot on out-of-distribution concurrent bug programs.
+
+**Lead with:** Traj model (40.1%) > Gemini 3.1 Pro (zero-shot) > Gemini Flash (35.8%) > Phase 13 CE (36.2%).
+**Statistical anchor:** Traj vs Phase 13 CE p=0.016 ✅ — trajectory training is a genuine improvement over single-step fine-tuning.
+**Don't lead with** Gemini Flash McNemar (p=0.069) — use the stronger model comparison instead.
+
+### Scenario B: Gemini 3.1 Pro scores ABOVE 40.1%
+
+**Central claim:** Trajectory fine-tuning produces a model that matches frontier zero-shot accuracy while additionally exhibiting coherent multi-step rollout and better calibration — capabilities that zero-shot prompting alone cannot provide.
+
+**Three pillars:**
+1. **Coherence:** Traj model 10.48 mean survival steps. Gemini Pro zero-shot cannot sustain valid rollout (no training signal for scheduler consistency). Run rollout eval on Pro to confirm.
+2. **Calibration:** ECE 0.169 vs Gemini Pro's ECE (need to measure on distribution eval groups). Model knows what it doesn't know — more useful for bug detection.
+3. **Efficiency:** 945 training examples + 7B model vs frontier API calls. Domain-specific small model matches large general model.
+
+**Do NOT frame as a failure.** Framing: "We show the capability gap between accuracy and coherence — a model can be accurate one step at a time without understanding execution flow, and our training signal specifically targets coherence."
+
+---
+
+## Training Frequency — Final Numbers (for paper)
+
+Trajectory model trained on `train_trajectory.jsonl` — 3,150 assistant steps:
+
+| Event | Train % | Val % | Val accuracy | Failure mechanism |
+|---|---|---|---|---|
+| GoBlock | 43.8% | 26.2% | 58% | Overrepresented → good |
+| GoStart | 37.6% | 35.5% | 28% | Matched → confused with GoBlock |
+| GoUnblock | 15.6% | 6.0% | **0%** | **Structural** — not frequency |
+| GoEnd | 1.5% | 4.1% | 0% | Frequency-driven blind spot |
+| GoCreate | 0.9% | 21.2% | 72% | Format effect (not frequency) |
+| GoSched | 0.5% | 7.0% | 0% | Frequency-driven blind spot |
+
+**Three distinct limitation classes (the Limitations/Future Work taxonomy — use this structure in the paper):**
+
+**Class 1 — Distributional gaps (solvable):** GoEnd (1.5% train, 4.1% val, 0% acc), GoSched (0.5% train, 7.0% val, 0% acc). The model simply never sees enough examples. Fix: stratified sampling. Expected impact: meaningful accuracy improvement on those event types specifically.
+
+**Class 2 — Observability gaps (requires richer instrumentation):** GoUnblock (15.6% train, 6.0% val, **0% acc**). The model sees plenty of examples but cannot predict GoUnblock because predicting it requires knowing which blocked goroutine is about to be woken up — which requires knowing which channel just received a value or which mutex just unlocked. The Go runtime trace exposes neither. No amount of additional training data fixes this. Fix: custom Go runtime instrumentation exposing channel buffer state and mutex holder IDs at unblock time. This is also the Ballerina extension motivation — Ballerina's tracer can be built from scratch to expose this state. This is an **information-theoretic limit**, not a data limit.
+
+**Class 3 — Semantic confusion:** GoStart/GoBlock (198/798 = 24.8% of all errors). The model anchors on the preceding event (46% of confusions follow GoBlock, 40% follow GoStart) rather than reasoning about goroutine state. Fix: richer state representation, explicitly encoding the `blocked_on` field in the prompt.
+
+**One-sentence summary of all empirical findings:**
+> Format helps with structurally predictable events (GoCreate — visible from source syntax); no format helps with structurally unobservable events (GoUnblock — causal event is invisible to the tracer).
+
+**GoCreate anomaly (important for paper):**
+- Only 0.9% in training, 21.2% in val, yet 72% accuracy
+- GoCreate is predictable from program structure (`go` keyword in source → model infers a goroutine spawn is imminent). GoUnblock is not predictable from the observable trace because the causal event (channel receive, mutex unlock) is invisible.
+- This is the strongest evidence for the "format effect" beyond Phase 17 ablation.
+- Gemini 3.1 Pro gets 76% GoCreate (our 72%) — confirms this is source-structure reasoning, not fine-tuning.
+- Gemini 3.1 Pro gets 23% GoUnblock (our 0%) — suggests Pro infers some channel state from source; our model cannot without explicit training on unblock context.
+
+**Gemini 3.1 Pro partial results (253/798, eval still running as of Jun 19):**
+| Event | Pro acc | Traj acc | Delta |
+|---|---|---|---|
+| GoBlock | 25% | 58% | −33pp |
+| GoCreate | 76% | 72% | +4pp |
+| GoEnd | 17% | 0% | +17pp |
+| GoSched | 0% | 0% | 0pp |
+| GoStart | 33% | 28% | +5pp |
+| GoUnblock | 23% | 0% | **+23pp** |
+| **Overall** | **36.4%** | **39.9%** | **−3.5pp (traj wins)** |
+
+---
+
+## When Gemini 3.1 Pro Result Lands — Do This Immediately
+
+1. Check per-event accuracy breakdown for Pro — does it predict GoEnd/GoSched/GoUnblock?
+   - If yes: shows what stratified sampling would fix in our model
+   - Compare Pro's GoCreate accuracy vs ours (72%) — we likely win there
+2. Run `uv run python eval/phase18_analysis.py` — it will auto-compute McNemar traj vs Pro if you add the Pro file path
+3. Update `phase18_numbers.json` and RESULTS.md
+4. Choose framing (Scenario A or B above) and start writing `weave.tex`
+
+### Key numbers for paper writing
+| Claim | Number | Source |
+|---|---|---|
+| Best single-step accuracy | **40.1%** | eval_results_traj_accuracy.json |
+| vs majority-class baseline | **+4.6pp** (35.5% baseline) | phase18_numbers.json |
+| vs Phase 13 CE (McNemar) | **p=0.016**, CI [+1.0, +8.3pp] | phase18_numbers.json |
+| vs Gemini Flash 35.8% (McNemar) | **p=0.069 ❌ not significant**, CI [−0.18, +8.77pp] | phase18_numbers.json |
+| vs Gemini 3.1 Pro (McNemar) | **partial: 36.4% on 253/798 examples, traj leads** | checkpoint (eval still running) |
+| Coherence improvement | **10.48 steps** (10× over ~1.0) | rollout_results_traj.json |
+| Source of gain | **GoCreate +24pp** (all other events flat) | phase18_numbers.json |
+| Format vs steps (ablation) | **+3.9pp format, 0pp steps** | eval_ablation_1step.json |
+| Training frequency gap | GoCreate 0.9% train vs 21.2% val | phase18_numbers.json |
+
+### Eval results location (gitignored — keep local)
+All per-example JSONs are in `eval/results/`. **Do not delete.** They are gitignored but must persist locally for McNemar tests.
+- `eval_results_traj_accuracy.json` — traj model (Phase 16)
+- `eval_phase13_ce.json` — Phase 13 CE baseline
+- `eval_ablation_1step.json` / `eval_ablation_point6ep.json` — Phase 17 ablations
+- `gemini_goker_gemini-3_5-flash.json` — Gemini baseline (generated by re-eval)
 
 Original Phase specs preserved below for reference.
 
