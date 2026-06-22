@@ -6,7 +6,7 @@
 # All outputs saved to /workspace (persistent volume).
 set -e
 
-MODEL_ID="${MODEL_ID:-Qwen/Qwen2.5-Coder-7B-Instruct}"
+MODEL_ID="${MODEL_ID:-Qwen/Qwen3-8B-Instruct}"
 BATCH_SIZE="${BATCH_SIZE:-1}"
 GRAD_ACCUM="${GRAD_ACCUM:-8}"
 
