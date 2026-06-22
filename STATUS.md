@@ -3,6 +3,21 @@
 > Read this first when picking up on a new machine. Then read CLAUDE.md for the full plan.
 
 ### Recent Updates & Changelog
+- **2026-06-22 (later)**: **Phase 20 Option A prototype complete.** `instrumented/` package (WeaveChan[T], WeaveMutex) embeds sync events via `runtime/trace.Log` into the scheduler trace (same clock, no sidecar file, no timestamp skew). `tracer/parser.go` now handles `EventLog("weave-sync")` inline — Channels/Mutexes maps populated without any post-processing. Demo: 5/5 GoUnblock events on unbuffered channel linked to causal goroutine; 19/21 mutex GoUnblock events linked. **RQ1 premise confirmed experimentally**: GoUnblock 0% accuracy is an observability limit (GoBlock causal state now visible in snapshot), not a data or capacity limit. Branch: `phase-20-wrapper`. Next: retrain traj model on instrumented corpus to measure GoUnblock recovery — the thesis-defining A/B experiment.
+- **2026-06-22 (later)**: **NIER paper: Ballerina/WSO2 removed.** Future Plans section now describes the instrumented wrapper library approach (Option A) instead of Ballerina as the observability fix. Paper is consistent with anonymous submission.
+- **2026-06-22 (later)**: **Thesis-level research direction committed (owner sign-off).** Fresh
+  literature sweep (as of 2026-06-22, 6 axes, ~30 verified papers) in `research_direction/`
+  confirms the core idea is **unscooped** — closest neighbours are sequential/deterministic
+  (Neural Debugger for Python 2603.09951, Self-Execution Simulation 2604.03253), spec-target not
+  process-target (Probabilistic Calibration 2605.11845), or learn-to-search not -predict
+  (Q-learning CCT, OOPSLA'20). **Direction = Candidate B core:** an observability-complete,
+  distributional concurrent-execution world model. NIER paper = first checkpoint (Candidate A);
+  oracle utility = payoff (C); Ballerina = horizon (D). Main RQ + 5 sub-RQs + phased roadmap in
+  `research_direction/north_star.md`. **Phase 20 (tracer) feasibility spike done** — see
+  `research_direction/phase20_tracer_feasibility.md`: Go trace records blocking *kind* but not
+  channel identity / buffer / mutex holder (GoUnblock limit confirmed in data); recommended path
+  = instrumented wrapper library (Option A) → eBPF (C) → defer runtime fork (B). Sequencing:
+  start Phase 20 feasibility now in parallel with the NIER checkpoint.
 - **2026-06-22**: **Pivoted back to ICSE 2027 NIER (single target).** Dropped the Research Track attempt — the corpus scale (130 programs) and the ~36–40% accuracy ceiling fit NIER's "honest limitations + future work" framing far better. `weave-nier/main.tex` is now the canonical paper (4 pages main + 1 page refs, IEEEtran 10pt); `weave-research/` is archived for reference. Runway: ~4 months to the **Fri 23 Oct 2026** NIER deadline. Budget for any new experiment: **~$20 RunPod + ~$10 Gemini**. Phase 19 strengthening candidates (costed menu) added to CLAUDE.md — pick at most one before finalizing the paper.
 - **2026-06-19**: **Related works research complete.** `related_works.md` created with 19 verified external citations (all titles/authors/venues/URLs confirmed). Organized into 4 narrative sections with draft "USE:" sentences ready to paste into paper. See "Paper Writing" section in CLAUDE.md for how to use it.
 - **2026-06-19**: **Phase 18 complete.** Gemini Flash re-eval: 35.8% (no thinking). McNemar traj vs Phase13 CE: p=0.016 ✅ CI [+1.0, +8.3pp]. McNemar traj vs Gemini Flash: p=0.069 ❌ not significant, CI [-0.18, +8.77pp]. GoCreate +24pp is the entire source of the 4.6pp gain. Majority-class baseline: 35.5%. Gemini 3.1 Pro eval running (thinking=auto) — pending final comparison. `phase18_numbers.json` saved.

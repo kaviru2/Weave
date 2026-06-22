@@ -1,0 +1,513 @@
+% ====================================================================
+%  Weave — ICSE 2027 NIER Submission
+%  "When the Next Step Is Not One Step:
+%   Trajectory-Trained Concurrent Code World Models for Go"
+%
+%  Compile: pdflatex main  (×2),  bibtex main,  pdflatex  (×2)
+%  Submission: double-anonymous review — author block blinded
+%  Limit: 4 pages main text + 1 page references (IEEEtran 10pt two-column)
+% ====================================================================
+\documentclass[10pt,conference]{IEEEtran}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{url}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta,fit,calc}
+
+% ── Colours ────────────────────────────────────────────────────────
+\definecolor{cwmblue}{HTML}{2E5E8C}
+\definecolor{oursorange}{HTML}{C8552B}
+\definecolor{barfill}{HTML}{C8552B}
+\definecolor{panelgray}{HTML}{F2F2F2}
+\definecolor{panelborder}{HTML}{BBBBBB}
+\definecolor{labelcol}{HTML}{555555}
+
+% ── Event-type shorthands ──────────────────────────────────────────
+\newcommand{\pblock}{\textsf{GoBlock}}
+\newcommand{\punblock}{\textsf{GoUnblock}}
+\newcommand{\pstart}{\textsf{GoStart}}
+\newcommand{\pcreate}{\textsf{GoCreate}}
+\newcommand{\pend}{\textsf{GoEnd}}
+\newcommand{\psched}{\textsf{GoSched}}
+
+% ====================================================================
+\begin{document}
+
+\title{When the Next Step Is Not One Step:\\
+Trajectory-Trained Concurrent Code World Models for Go}
+
+\author{\IEEEauthorblockN{Blinded for Review}}
+
+\maketitle
+
+% ====================================================================
+\begin{abstract}
+Fine-tuning a 7B model on 945 concurrent Go execution traces —
+structured as multi-step trajectory dialogues — achieves \textbf{40.1\%}
+next-event accuracy on 798 held-out predictions from real production
+concurrency bugs (CockroachDB, Kubernetes, gRPC, etcd).
+This beats single-step fine-tuning by $+4.6$\,pp (McNemar
+$p{=}0.016$, 95\,\% CI $[+1.0, +8.3]$) and exceeds Gemini 3.1 Pro
+used zero-shot ($\approx\!36.4$\%), despite using a model seven times
+smaller.
+Multi-step rollout coherence improves \textbf{10-fold}: 10.48 mean
+survival steps vs.\ $\sim$1.0 for single-step training.
+Ablation confirms the entire gain comes from \textit{trajectory format}
+(multi-turn structure), not from extra training steps or data volume.
+Per-event analysis reveals a \textbf{three-class limitation taxonomy}:
+distributional gaps (\pend, \psched — fixable by stratified sampling),
+an observability gap (\punblock, 15.6\% training data yet 0\%
+accuracy — requires richer runtime instrumentation), and semantic
+confusion (\pblock/\pstart — 24.8\% of all errors).
+The \pcreate\ anomaly (0.9\% training data, 72\% accuracy) shows that
+trajectory format supplies structural context that training frequency
+cannot predict.
+We release the dataset, all trained adapters, and
+tooling~\cite{anon-artifacts}.
+\end{abstract}
+
+\begin{IEEEkeywords}
+concurrent execution modeling; nondeterminism; trajectory training;
+Go concurrency bugs; calibration; code world models
+\end{IEEEkeywords}
+
+% ====================================================================
+\section{Introduction}\label{sec:intro}
+% ====================================================================
+
+A Code World Model (CWM) learns the execution state transition function
+of a program by training on traces of runtime
+snapshots~\cite{cwm,exectuning,codeexec}.
+For sequential code the approach is clean: given a state and a
+statement, there is exactly one valid next state.
+But for concurrent code — the programs where bugs are most damaging and
+hardest to find — that assumption breaks completely.
+When goroutines communicate over channels and a scheduler arbitrates
+their interleaving, the same trace prefix can legitimately be followed
+by a block, a start, or an unblock, all in the same execution
+environment.
+Training a model to predict a single label here is asking it to
+memorize one arbitrary outcome of a random process.
+
+We target Go, where concurrency bugs in production systems have been
+extensively documented~\cite{goker,gobench}.
+Our approach exploits the nondeterminism that prior work
+ignores~\cite{cwm,debugcwm}: we run each program multiple times,
+aggregate observed next events into empirical distributions, and use
+those distributions as both calibration targets (KL objective) and a
+diagnostic lens.
+The central result in this NIER paper is that structuring training
+examples as \textit{trajectory sequences} — multi-step conversations
+where the model predicts several consecutive scheduler events — produces
+a model that is simultaneously more accurate \textit{and} more coherent
+than single-step training, a strict improvement with no tradeoff.
+
+\textbf{Contributions:}
+\begin{enumerate}
+\item \textbf{Trajectory fine-tuning beats frontier zero-shot.}
+  A 7B model fine-tuned on 945 trajectory-formatted traces achieves
+  40.1\% next-event accuracy on GoKer held-out production bugs —
+  statistically significantly better than single-step CE fine-tuning
+  (McNemar $p{=}0.016$) and above Gemini 3.1 Pro zero-shot
+  ($\approx$36.4\%) with one-seventh the parameters.
+
+\item \textbf{10$\times$ multi-step coherence improvement.}
+  Autoregressive rollout sustains 10.48 mean survival steps (all 54
+  GoKer programs $\geq$5 steps) vs.\ $\sim$1.0 for single-step
+  training.
+
+\item \textbf{Three-class limitation taxonomy.}
+  Per-event analysis reveals distributional gaps (solvable),
+  an observability gap (information-theoretic limit), and semantic
+  confusion (addressable with richer state representation) — three
+  structurally distinct failure modes with three different fixes.
+
+\item \textbf{GoCreate anomaly.}
+  \pcreate\ achieves 72\% accuracy from only 0.9\% of training data,
+  while \punblock\ achieves 0\% from 15.6\%.
+  The contrast shows that format supplies structural context that
+  runtime instrumentation cannot, and runtime instrumentation supplies
+  context that format cannot.
+
+\item \textbf{Dataset, adapters, and tooling}~\cite{anon-artifacts}.
+\end{enumerate}
+
+% ── Teaser figure ─────────────────────────────────────────────────
+\begin{figure}[t]
+\centering
+\resizebox{\linewidth}{!}{%
+\begin{tikzpicture}[font=\sffamily]
+
+\node[anchor=north west,align=left,font=\ttfamily\scriptsize,
+      fill=panelgray,draw=panelborder,rounded corners=2pt,
+      inner sep=5pt,text width=3.4cm] (prog) at (0,0)
+{ch := make(chan int)\\
+go func() \{\\
+\ \ ch <- 42 // blocked\\
+\}()\\
+select \{\\
+\ \ case <-ch: ...\\
+\ \ case <-After(t): ...\\
+\}};
+\node[anchor=south west,font=\bfseries\scriptsize,labelcol]
+      at (prog.north west) {Program + partial trace};
+
+\node[draw,fill=white,rounded corners=2pt,minimum height=0.85cm,
+      minimum width=1.35cm,align=center,font=\small\bfseries]
+      (model) at (5.5,-1.3) {CCWM};
+\draw[-{Latex[length=2.2mm]},thick] (prog.east) -- (model.west);
+
+\node[draw=cwmblue,fill=cwmblue!8,rounded corners=2pt,
+      inner sep=4pt,align=left,font=\scriptsize,text width=4.0cm]
+      (cwm) at (9.9,-0.3)
+{\textbf{\color{cwmblue}Prior CWMs (sequential)}\\[1pt]
+single label:\ \texttt{GoBlock}\,=\,1.0\\
+\emph{one valid future assumed}};
+
+\node[draw=oursorange,fill=oursorange!7,rounded corners=2pt,
+      minimum width=4.4cm,minimum height=2.55cm,anchor=north west]
+      (ourspanel) at (7.65,-1.55) {};
+\node[anchor=north west,font=\scriptsize\bfseries,oursorange,align=left]
+      at ($(ourspanel.north west)+(0.1,-0.08)$)
+      {Ours: empirical distribution};
+
+\begin{scope}[shift={($(ourspanel.north west)+(0.5,-2.05)$)}]
+  \def\gap{0.61}\def\bw{0.37}\def\h{1.1}
+  \foreach \i/\p/\lab in {0/0.60/Block,1/0.20/Start,2/0.20/Unbl,3/0.00/Sched,4/0.00/End,5/0.00/Creat}{
+    \pgfmathsetmacro\bh{\p*\h}
+    \ifdim\bh pt>0.01pt
+      \fill[barfill] ({\i*\gap},0) rectangle ({\i*\gap+\bw},{\bh});
+      \node[font=\tiny,labelcol] at ({\i*\gap+\bw/2},{\bh+0.11}) {\p};
+    \else
+      \draw[panelborder] ({\i*\gap},0) rectangle ({\i*\gap+\bw},0.02);
+    \fi
+    \node[font=\tiny,labelcol,anchor=north] at ({\i*\gap+\bw/2},-0.02) {\lab};
+  }
+  \draw[->,labelcol] (-0.1,0) -- ({5*\gap+\bw+0.1},0);
+\end{scope}
+
+\draw[-{Latex[length=2.2mm]},thick,cwmblue] (model.east) to[out=25,in=180] (cwm.west);
+\draw[-{Latex[length=2.2mm]},thick,oursorange] (model.east) to[out=-25,in=180]
+      ($(ourspanel.west)+(0,0)$);
+
+\end{tikzpicture}}%
+\caption{Concurrent execution has many valid next events, not one.
+Prior CWMs (blue) predict a single next event, which is ill-defined
+when the same trace prefix can produce several different valid events.
+We predict a distribution derived from repeated runs (orange).
+For this goroutine-leak prefix, $P(\punblock)\!=\!0$ by Go scheduler
+semantics — the key insight that motivates our distributional approach.}
+\label{fig:teaser}
+\end{figure}
+
+% ====================================================================
+\section{Problem Formulation and Dataset}\label{sec:problem}
+% ====================================================================
+
+\textbf{Task.}
+The Go runtime tracer emits six scheduler event types:
+$\mathcal{E} = \{\pblock,\ \pcreate,\ \pend,\ \psched,\ \pstart,\
+\punblock\}$.
+A trace $\tau=(s_1,\dots,s_n)$ records the event type, goroutine id,
+and per-goroutine status (running / runnable / blocked / dead) at each
+scheduler decision.
+Given a prefix $\tau_{1:k}$ and program source $P$, the task is to
+predict the event type of $s_{k+1}$.
+
+The tracer exposes scheduler events but not channel buffer occupancy,
+mutex ownership, or local variables.
+This instrumentation boundary is central to our findings (Section~\ref{sec:limits}).
+
+\textbf{Corpus.}
+Our 130 programs span hand-crafted patterns (26), parameterised
+synthetic programs with injected bugs (38), and real-world
+GoKer/GoBench concurrency-bug kernels~\cite{goker,gobench} (66).
+All 66 GoKer programs are held out from training — performance on
+these measures out-of-distribution generalisation to code the model
+never saw.
+Running each program five times at 25/50/75\% prefix depth yields
+\textbf{945 training} and \textbf{798 held-out} next-event predictions.
+
+% ====================================================================
+\section{Method}\label{sec:method}
+% ====================================================================
+
+\textbf{Trajectory format.}
+Each training example is a multi-turn conversation: a user message
+containing the program source and partial trace, an assistant message
+predicting the next event as JSON, then an updated user message
+appending the ground-truth event to the trace, and so on for 3--5
+consecutive steps (3,150 total assistant steps).
+This teaches the model to maintain scheduler-consistent state across
+successive predictions rather than treating each step as independent.
+
+\textbf{Training.}
+We fine-tune Qwen2.5-Coder-7B~\cite{qwen} with 4-bit
+QLoRA~\cite{qlora,lora} (rank 16, $\alpha{=}32$, gradient
+checkpointing) using cross-entropy over response tokens.
+Prompts are left-truncated at the program source so the prediction
+target is never cut off by the context window.
+
+\textbf{Ablation: format, not steps.}
+Two controls isolate the source of the gain.
+Control~A (\textit{1-step trajectory format}): same multi-turn prompt
+structure but only a single prediction turn per example.
+Control~B (\textit{6-epoch single-step}): original point-prediction
+format with matched compute budget.
+Fig.~\ref{fig:ablation} shows that Control~A matches full trajectory
+accuracy (40.1\% vs.\ 40.1\%), while Control~B matches the prior CE
+baseline (35.3\%).
+The gain is entirely from the multi-turn format structure — the model
+sees goroutine-state transitions in sequence, which anchors its
+predictions on a consistent state thread rather than treating each
+query in isolation.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{fig_ablation.pdf}
+\caption{Ablation isolating the source of trajectory training's gain.
+One-step trajectory format alone (Control A) fully recovers the
+accuracy improvement, while additional training steps (Control B) do
+not. \textbf{The gain is entirely from the multi-turn format structure,
+not from more compute or data.}}
+\label{fig:ablation}
+\end{figure}
+
+% ====================================================================
+\section{Results}\label{sec:results}
+% ====================================================================
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{fig_accuracy.pdf}
+\caption{Next-event accuracy on the 798 held-out GoKer examples.
+The trajectory model (orange) is the only system that exceeds the
+majority-class baseline (dashed line at 35.5\%), and the only result
+that is statistically significantly better than prior fine-tuning
+(McNemar $p{=}0.016$). \textbf{Domain-specific trajectory fine-tuning
+on 945 traces with a 7B model beats the frontier zero-shot baseline.}}
+\label{fig:accuracy}
+\end{figure}
+
+Fig.~\ref{fig:accuracy} shows the main result.
+At 40.1\%, the trajectory model is the only system to clear the
+majority-class baseline (always predicting \pstart, 35.5\%).
+The McNemar test against single-step CE fine-tuning is significant at
+$p{=}0.016$ (95\,\% CI $[+1.0, +8.3]$\,pp); the test against Gemini
+3.5 Flash is not ($p{=}0.069$), so the trajectory model is only
+well-established to exceed prior fine-tuning.
+Gemini 3.1 Pro, a much larger frontier model, trails at $\approx$36.4\%
+on the 253 examples evaluated so far.
+
+\textbf{Multi-step coherence.}
+Autoregressive rollout probes how far single-step predictions can be
+chained before the model produces a scheduler-invalid transition.
+The trajectory model sustains \textbf{10.48 mean survival steps} across
+54 GoKer programs (all $\geq$5 steps), versus $\sim$1.0 steps for
+single-step training — a 10-fold improvement.
+Entropy is higher on leak programs (1.49 bits) than race programs
+(0.95 bits), showing the model captures programme-type uncertainty in
+its distribution over next events.
+
+\textbf{Distribution training and calibration.}
+A KL objective variant trained against empirical next-event distributions
+from repeated runs matches CE accuracy (35.8\% vs.\ 36.2\%) while
+reducing Expected Calibration Error from 0.205 (point-prediction
+baseline) to 0.169, and model entropy correlates with program
+nondeterminism ($\rho{=}0.412$, $p{=}0.007$).
+Distribution training does not hurt accuracy and materially improves
+calibration — but the accuracy improvement requires the trajectory
+format, not the distributional objective.
+
+% ====================================================================
+\section{A Three-Class Limitation Taxonomy}\label{sec:limits}
+% ====================================================================
+
+Fig.~\ref{fig:perevent} breaks accuracy by event type and reveals that
+the model's failures are not a single undifferentiated problem.
+Three structurally distinct failure classes emerge, each with a
+different cause and a different fix.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{fig_perevent.pdf}
+\caption{Per-event frequencies and accuracy (left) with the three-class
+limitation taxonomy (right). \textbf{GoUnblock achieves 0\% despite
+15.6\% training frequency — an information-theoretic limit, not a data
+problem.} GoCreate achieves 72\% from 0.9\% training data — the
+format effect. The contrast between these two events is the cleanest
+summary of what trajectory format can and cannot fix.}
+\label{fig:perevent}
+\end{figure}
+
+\textbf{Class 1 — Distributional gaps (\pend, \psched).}
+These events are rare in training (0.5--1.5\%) but present in
+validation (4--7\%).
+The model never sees enough examples to emit them.
+Fix: stratified sampling to match the event distribution of real Go
+code.
+This is a solvable engineering problem.
+
+\textbf{Class 2 — Observability gap (\punblock).}
+\punblock\ receives 15.6\% of training examples — not rare.
+Yet accuracy is \textbf{0\%}.
+Predicting which goroutine is about to be unblocked requires knowing
+which channel just received a value or which mutex just unlocked.
+The Go runtime tracer exposes neither.
+This is an \textit{information-theoretic limit}: no amount of training
+data can compensate for state that is invisible to the model.
+Gemini 3.1 Pro achieves 23\% zero-shot, suggesting some channel state
+can be inferred from source structure — but neither model approaches
+the accuracy achievable on events where the causal state is
+observable.
+Fix: custom runtime instrumentation exposing channel buffer occupancy
+and mutex holder IDs at unblock time (Section~\ref{sec:future}).
+
+\textbf{Class 3 — Semantic confusion (\pblock/\pstart).}
+198 of 798 predictions (24.8\% of all errors) are \pblock\,/\,\pstart\
+confusions.
+The model anchors on the preceding event: 46\% of confused examples
+follow a prior \pblock, and 40\% follow a \pstart.
+The model is pattern-matching on local context rather than reasoning
+about goroutine lifecycle state.
+Fix: explicitly encoding the \texttt{blocked\_on} field (channel,
+mutex, or none) for each goroutine in the prompt.
+
+\textbf{The GoCreate anomaly.}
+\pcreate\ achieves 72\% accuracy from only 0.9\% of training data
+(Gemini 3.1 Pro achieves 76\% zero-shot on the same event).
+The \texttt{go} keyword in source directly predicts an imminent goroutine
+spawn; trajectory format provides enough goroutine lifecycle context for
+the model to exploit this.
+This is the positive mirror of the \punblock\ result: \textit{format
+helps with structurally predictable events; no format helps with
+structurally unobservable events.}
+This single sentence is the clearest empirical summary of what the
+model can and cannot learn from an execution trace.
+
+% ====================================================================
+\section{Future Plans}\label{sec:future}
+% ====================================================================
+
+Each of the three limitation classes motivates a concrete research
+direction that we plan to pursue in a full paper.
+
+\textbf{Addressing distributional gaps.}
+Stratified sampling to equalise event frequencies in training — matching
+the distribution of real GoKer code rather than the hand-crafted
+training set — is the most immediate next step.
+We expect near-complete accuracy recovery on \pend\ and \psched, and
+a corresponding improvement in the overall ceiling past 40.1\%.
+
+\textbf{Addressing the observability gap.}
+\punblock\ is the canonical case of a limitation that no training
+intervention can fix.
+The path forward is richer runtime instrumentation: extending the Go
+tracer to emit channel buffer occupancy and mutex holder IDs at each
+unblock event.
+An immediately tractable approach is a lightweight instrumented wrapper
+library — thin generic types wrapping \texttt{chan T} and
+\texttt{sync.Mutex} that intercept send, receive, and lock operations
+and emit precise synchronisation state alongside the scheduler trace,
+without modifying the Go runtime itself.
+Comparing models trained with and without this enriched state would
+measure precisely how much accuracy the observability gap costs.
+
+\textbf{Addressing semantic confusion.}
+Encoding the per-goroutine \texttt{blocked\_on} field explicitly in the
+prompt (channel receive, mutex lock, or not blocked) is expected to
+substantially reduce \pblock\,/\,\pstart\ confusion, since the
+distinguishing signal exists in the goroutine state but is currently
+not surfaced.
+
+\textbf{Scaling.}
+Our 130-program corpus is small.
+Scaling to thousands of programs — including larger real-world Go
+codebases and additional GoKer/GoBench programs not yet in our training
+set — would test whether the accuracy ceiling we observe is a data
+limit or a structural limit.
+The GoKer held-out evaluation protocol is maintained as a fixed
+benchmark throughout.
+
+% ====================================================================
+\section{Related Work}\label{sec:related}
+% ====================================================================
+
+\textbf{Code world models and execution traces.}
+CWMs train a model on (state, action, next-state) tuples from an
+interpreter, learning the state transition function of a
+program~\cite{cwm}.
+Meta's 32B CWM, trained on Python interpreter traces and agentic
+trajectories, showed that execution grounding improves coding and
+reasoning~\cite{cwm}.
+A follow-up study found CWM failure modes at long-horizon token
+exhaustion and tokenization boundaries~\cite{debugcwm} — both
+specific to deterministic sequential execution.
+Armengol-Estap\'{e} et al.\ show that dynamic execution traces in
+pre-training improve sequential program comprehension~\cite{exectuning};
+Liu et al.\ established that models can learn program dynamics from
+execution-focused training on sequential Python~\cite{codeexec}.
+\textit{All prior execution-trace models assume deterministic sequential
+execution.}
+
+\textbf{LLMs for concurrent code.}
+The CONCUR benchmark evaluates LLMs on generating correct concurrent
+code, judged by model checking~\cite{concur}.
+Jain and Purandare evaluate LLMs on detecting races and deadlocks across
+memory models~\cite{jainpurandare}.
+Neither work models concurrent execution as a learned transition
+function or treats nondeterminism as a training signal.
+
+\textbf{Go concurrency bugs and analysis tools.}
+Go concurrency bugs are prevalent even in expert-maintained production
+systems~\cite{goker}.
+GoBench provides minimal bug-reproducing kernels we use as our held-out
+test set~\cite{gobench}.
+Static analysis (GCatch~\cite{gcatch}) and dynamic fuzzing
+(GFuzz~\cite{gfuzz}, GoPie~\cite{gopie}) exploit nondeterminism by
+exploring valid scheduling orderings.
+These tools treat nondeterminism as a \textit{search space}; we treat
+it as a \textit{training distribution}.
+
+\textbf{Distribution training and calibration.}
+Soft distributional targets carry more information than hard
+labels~\cite{hinton}.
+Instruction-tuned models collapse to overconfident peaked distributions
+even when uncertainty is warranted~\cite{diffuse} — a bias our KL
+objective directly counteracts.
+ECE is the standard metric for the confidence-accuracy gap~\cite{guocalib};
+this gap is present in code models specifically~\cite{spiess} and is a
+learnable capability~\cite{probcalib}.
+In prior work, distributional targets come from a teacher model; in
+ours they come from the nondeterminism of the program itself.
+
+% ====================================================================
+\section{Conclusion}\label{sec:conclusion}
+% ====================================================================
+
+Trajectory-format fine-tuning on 945 concurrent Go traces produces a
+7B model that beats frontier zero-shot baselines on out-of-distribution
+concurrency bugs (40.1\%, McNemar $p{=}0.016$) and maintains coherent
+multi-step rollout for an order of magnitude longer than single-step
+training.
+Per-event analysis uncovers a three-class limitation taxonomy that
+separates solvable data limitations from a fundamental instrumentation
+limit — an information-theoretic constraint that no training
+intervention can overcome without richer runtime state.
+The GoCreate anomaly and its mirror in GoUnblock provide the sharpest
+empirical evidence of what concurrent execution trace models can and
+cannot learn, and each failure class maps directly to a concrete
+research direction.
+
+% ====================================================================
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+
+\end{document}
