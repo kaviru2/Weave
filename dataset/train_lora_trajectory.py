@@ -121,7 +121,7 @@ def train(args: argparse.Namespace) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Phase 16: trajectory QLoRA training")
-    parser.add_argument("--model_id",       default="Qwen/Qwen3-8B-Instruct")
+    parser.add_argument("--model_id",       default="Qwen/Qwen3-8B")
     parser.add_argument("--train_file",     default="/root/train_trajectory.jsonl")
     parser.add_argument("--val_file",       default="/root/val_trajectory.jsonl")
     parser.add_argument("--output_dir",     default="/root/lora_adapter_traj")

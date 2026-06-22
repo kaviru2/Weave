@@ -38,7 +38,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--adapter",  required=True)
     parser.add_argument("--val_file", required=True)
-    parser.add_argument("--model_id", default="Qwen/Qwen3-8B-Instruct")
+    parser.add_argument("--model_id", default="Qwen/Qwen3-8B")
     parser.add_argument("--out_file", default="eval_results.json")
     parser.add_argument("--max_tokens", type=int, default=4096)
     parser.add_argument("--load_in_4bit", action="store_true",

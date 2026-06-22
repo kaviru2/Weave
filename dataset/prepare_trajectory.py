@@ -30,7 +30,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 try:
     from transformers import AutoTokenizer
-    _tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen3-8B-Instruct", trust_remote_code=True)
+    _tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen3-8B", trust_remote_code=True)
 except Exception:
     _tokenizer = None
 

@@ -4,7 +4,7 @@
 # Usage: bash /root/runpod_pod.sh
 set -e
 
-MODEL_ID="${MODEL_ID:-Qwen/Qwen3-8B-Instruct}"
+MODEL_ID="${MODEL_ID:-Qwen/Qwen3-8B}"
 TRAIN_FILE="${TRAIN_FILE:-/root/train_point_dups.jsonl}"
 VAL_FILE="${VAL_FILE:-/root/val_point_dups.jsonl}"
 AGGREGATED_FILE="${AGGREGATED_FILE:-/root/aggregated.json}"

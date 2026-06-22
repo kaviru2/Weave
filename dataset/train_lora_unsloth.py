@@ -3,13 +3,13 @@
 dataset/train_lora_unsloth.py
 
 Unsloth-accelerated QLoRA fine-tuning for Weave CCWM.
-Targets Qwen/Qwen3-8B-Instruct on a single RTX 4000 Ada (20GB VRAM).
+Targets Qwen/Qwen3-8B on a single RTX 4000 Ada (20GB VRAM).
 Uses Unsloth's fused kernels and gradient checkpointing to fit 8B at seq_len=4096
 with batch_size=1, grad_accum=8 without OOM.
 
 Usage (RunPod):
     python train_lora_unsloth.py \
-        --model_id Qwen/Qwen3-8B-Instruct \
+        --model_id Qwen/Qwen3-8B \
         --train_file /root/train_point_dups.jsonl \
         --val_file   /root/val_point_dups.jsonl \
         --output_dir /root/lora_adapter \
@@ -144,7 +144,7 @@ def run_merge(args: argparse.Namespace):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Unsloth 7B QLoRA training for Weave CCWM")
-    parser.add_argument("--model_id",      default="Qwen/Qwen3-8B-Instruct")
+    parser.add_argument("--model_id",      default="Qwen/Qwen3-8B")
     parser.add_argument("--train_file",    default="dataset/output/train_point_dups.jsonl")
     parser.add_argument("--val_file",      default="dataset/output/val_point_dups.jsonl")
     parser.add_argument("--output_dir",    default="dataset/output/lora_adapter")
