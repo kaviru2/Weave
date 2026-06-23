@@ -71,7 +71,8 @@ def train(args: argparse.Namespace) -> None:
 
     def apply_template(example):
         return {"text": tokenizer.apply_chat_template(
-            example["messages"], tokenize=False, add_generation_prompt=False
+            example["messages"], tokenize=False, add_generation_prompt=False,
+            enable_thinking=False,
         )}
 
     dataset = dataset.map(apply_template, num_proc=2)
@@ -120,7 +121,7 @@ def train(args: argparse.Namespace) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Phase 16: trajectory QLoRA training")
-    parser.add_argument("--model_id",       default="Qwen/Qwen2.5-Coder-7B-Instruct")
+    parser.add_argument("--model_id",       default="Qwen/Qwen3-8B")
     parser.add_argument("--train_file",     default="/root/train_trajectory.jsonl")
     parser.add_argument("--val_file",       default="/root/val_trajectory.jsonl")
     parser.add_argument("--output_dir",     default="/root/lora_adapter_traj")

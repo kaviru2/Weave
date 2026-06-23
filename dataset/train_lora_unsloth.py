@@ -3,13 +3,13 @@
 dataset/train_lora_unsloth.py
 
 Unsloth-accelerated QLoRA fine-tuning for Weave CCWM.
-Targets Qwen2.5-Coder-7B-Instruct on a single RTX 4000 Ada (20GB VRAM).
-Uses Unsloth's fused kernels and gradient checkpointing to fit 7B at seq_len=4096
+Targets Qwen/Qwen3-8B on a single RTX 4000 Ada (20GB VRAM).
+Uses Unsloth's fused kernels and gradient checkpointing to fit 8B at seq_len=4096
 with batch_size=1, grad_accum=8 without OOM.
 
 Usage (RunPod):
     python train_lora_unsloth.py \
-        --model_id Qwen/Qwen2.5-Coder-7B-Instruct \
+        --model_id Qwen/Qwen3-8B \
         --train_file /root/train_point_dups.jsonl \
         --val_file   /root/val_point_dups.jsonl \
         --output_dir /root/lora_adapter \
@@ -74,7 +74,7 @@ def train(args: argparse.Namespace):
     # Pre-apply chat template so Unsloth sees a plain "text" column — avoids
     # batched vs unbatched formatting_func ambiguity in Unsloth's SFTTrainer.
     def apply_template(example):
-        return {"text": tokenizer.apply_chat_template(example["messages"], tokenize=False)}
+        return {"text": tokenizer.apply_chat_template(example["messages"], tokenize=False, enable_thinking=False)}
 
     dataset = dataset.map(apply_template, num_proc=2)
 
@@ -144,7 +144,7 @@ def run_merge(args: argparse.Namespace):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Unsloth 7B QLoRA training for Weave CCWM")
-    parser.add_argument("--model_id",      default="Qwen/Qwen2.5-Coder-7B-Instruct")
+    parser.add_argument("--model_id",      default="Qwen/Qwen3-8B")
     parser.add_argument("--train_file",    default="dataset/output/train_point_dups.jsonl")
     parser.add_argument("--val_file",      default="dataset/output/val_point_dups.jsonl")
     parser.add_argument("--output_dir",    default="dataset/output/lora_adapter")

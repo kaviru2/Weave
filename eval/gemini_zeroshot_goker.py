@@ -18,8 +18,10 @@ import json
 import os
 import random
 import sys
+import threading
 import time
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 
 from dotenv import load_dotenv
@@ -68,7 +70,7 @@ def call_gemini(
     config_kwargs: dict = {
         "system_instruction": system,
         "temperature": 0.0,
-        "max_output_tokens": 4096 if thinking_budget != 0 else 256,
+        "max_output_tokens": 4096,
     }
     if thinking_budget != 0:
         config_kwargs["thinking_config"] = genai_types.ThinkingConfig(
@@ -189,18 +191,52 @@ def make_layout(
 # Main eval loop
 # ---------------------------------------------------------------------------
 
+def load_checkpoint(ckpt_path: str) -> list[dict]:
+    try:
+        with open(ckpt_path) as f:
+            data = json.load(f)
+        console.print(f"[yellow]Resuming from checkpoint:[/] {len(data)} examples already done")
+        return data
+    except (FileNotFoundError, json.JSONDecodeError):
+        return []
+
+
+def save_checkpoint(ckpt_path: str, per_example: list[dict]) -> None:
+    with open(ckpt_path, "w") as f:
+        json.dump(per_example, f)
+
+
 def run_model(
     client: genai.Client,
     model: str,
     examples: list[dict],
     thinking_budget: int,
+    checkpoint_path: str = "",
+    parallel: int = 1,
 ) -> dict:
     total = len(examples)
     correct = 0
     errors = 0
     per_pattern: dict[str, dict] = defaultdict(lambda: {"correct": 0, "total": 0})
     per_nd: dict[str, dict] = defaultdict(lambda: {"correct": 0, "total": 0})
-    per_example = []
+
+    # Resume from checkpoint if available
+    # Only treat successfully completed examples as done — errors are retried on resume
+    _all_ckpt = load_checkpoint(checkpoint_path) if checkpoint_path else []
+    per_example = [ex for ex in _all_ckpt if not ex.get("error")]
+    done_indices = {ex["index"] for ex in per_example}
+    if len(_all_ckpt) != len(per_example):
+        console.print(f"[yellow]Checkpoint: {len(per_example)} successful, {len(_all_ckpt)-len(per_example)} errors will be retried[/]")
+
+    # Rebuild accumulators from checkpoint
+    for ex in per_example:
+        p, nd = ex.get("pattern", "unknown"), ex.get("nondeterminism", "unknown")
+        per_pattern[p]["total"] += 1
+        per_nd[nd]["total"] += 1
+        if ex.get("match"):
+            correct += 1
+            per_pattern[p]["correct"] += 1
+            per_nd[nd]["correct"] += 1
 
     thinking_label = (
         "auto (model decides)" if thinking_budget == -1
@@ -224,76 +260,97 @@ def run_model(
     last_match: Optional[bool] = None
     t0 = time.time()
 
+    lock = threading.Lock()
+    last_gt: str = ""
+    last_pred: str = ""
+    last_match: Optional[bool] = None
+
+    def process_one(idx_ex):
+        i, ex = idx_ex
+        messages = ex["messages"]
+        pattern = ex.get("concurrency_pattern", "unknown")
+        nd = ex.get("nondeterminism", "unknown")
+        system_content = next((m["content"] for m in messages if m["role"] == "system"), "You are a code execution simulator.")
+        user_content = next((m["content"] for m in messages if m["role"] == "user"), "")
+        gt_raw = next((m["content"] for m in messages if m["role"] == "assistant"), "")
+        try:
+            gt_event_type = json.loads(gt_raw).get("event_type")
+        except Exception:
+            gt_event_type = None
+        raw = ""
+        pred_event_type = None
+        error_msg = None
+        try:
+            raw = call_gemini(client, model, system_content, user_content, thinking_budget)
+            pred_event_type = parse_event_type(raw)
+        except Exception as exc:
+            error_msg = str(exc)[:160]
+        match = bool(gt_event_type and pred_event_type and gt_event_type == pred_event_type)
+        return i, gt_event_type, pred_event_type, match, pattern, nd, error_msg
+
+    pending = [(i, ex) for i, ex in enumerate(examples) if i not in done_indices]
+
     with Live(
-        make_layout(model, thinking_label, progress, 0, 0, total, 0, "", "", None, per_pattern, per_nd),
+        make_layout(model, thinking_label, progress, correct, len(done_indices), total, errors, "", "", None, per_pattern, per_nd),
         console=console,
         refresh_per_second=4,
     ) as live:
-        for i, ex in enumerate(examples):
-            messages = ex["messages"]
-            pattern = ex.get("concurrency_pattern", "unknown")
-            nd = ex.get("nondeterminism", "unknown")
-
-            system_content = next(
-                (m["content"] for m in messages if m["role"] == "system"),
-                "You are a code execution simulator.",
-            )
-            user_content = next(
-                (m["content"] for m in messages if m["role"] == "user"), ""
-            )
-            gt_raw = next(
-                (m["content"] for m in messages if m["role"] == "assistant"), ""
-            )
-            try:
-                gt_event_type = json.loads(gt_raw).get("event_type")
-            except Exception:
-                gt_event_type = None
-
-            raw = ""
-            pred_event_type = None
-            error_msg = None
-            try:
-                raw = call_gemini(
-                    client, model, system_content, user_content, thinking_budget
-                )
-                pred_event_type = parse_event_type(raw)
-            except Exception as exc:
-                error_msg = str(exc)[:160]
-                errors += 1
-
-            match = bool(gt_event_type and pred_event_type and gt_event_type == pred_event_type)
-            if match:
-                correct += 1
-
-            per_pattern[pattern]["total"] += 1
-            per_nd[nd]["total"] += 1
-            if match:
-                per_pattern[pattern]["correct"] += 1
-                per_nd[nd]["correct"] += 1
-
-            per_example.append({
-                "index": i,
-                "ground_truth_event_type": gt_event_type,
-                "predicted_event_type": pred_event_type,
-                "match": match,
-                "pattern": pattern,
-                "nondeterminism": nd,
-                "error": error_msg,
-            })
-
-            last_gt = gt_event_type or "?"
-            last_pred = pred_event_type or ("ERROR" if error_msg else "?")
-            last_match = match if error_msg is None else False
-
+      try:
+        # advance progress for already-done examples
+        for i in done_indices:
             progress.advance(task_id)
-            live.update(
-                make_layout(
-                    model, thinking_label, progress,
-                    correct, i + 1, total, errors,
-                    last_gt, last_pred, last_match,
-                    per_pattern, per_nd,
-                )
-            )
+
+        with ThreadPoolExecutor(max_workers=parallel) as executor:
+            futures = {executor.submit(process_one, item): item[0] for item in pending}
+            for future in as_completed(futures):
+                try:
+                    i, gt_event_type, pred_event_type, match, pattern, nd, error_msg = future.result()
+                except Exception as exc:
+                    continue
+
+                with lock:
+                    if match:
+                        correct += 1
+                    if error_msg:
+                        errors += 1
+                    per_pattern[pattern]["total"] += 1
+                    per_nd[nd]["total"] += 1
+                    if match:
+                        per_pattern[pattern]["correct"] += 1
+                        per_nd[nd]["correct"] += 1
+
+                    per_example.append({
+                        "index": i,
+                        "ground_truth_event_type": gt_event_type,
+                        "predicted_event_type": pred_event_type,
+                        "match": match,
+                        "pattern": pattern,
+                        "nondeterminism": nd,
+                        "error": error_msg,
+                    })
+
+                    if checkpoint_path:
+                        save_checkpoint(checkpoint_path, per_example)
+
+                    last_gt = gt_event_type or "?"
+                    last_pred = pred_event_type or ("ERROR" if error_msg else "?")
+                    last_match = match if error_msg is None else False
+
+                    progress.advance(task_id)
+                    live.update(
+                        make_layout(
+                            model, thinking_label, progress,
+                            correct, len(per_example) + len(done_indices), total, errors,
+                            last_gt, last_pred, last_match,
+                            per_pattern, per_nd,
+                        )
+                    )
+
+      except KeyboardInterrupt:
+          if checkpoint_path:
+              save_checkpoint(checkpoint_path, per_example)
+              console.print(f"\n[yellow]Interrupted — checkpoint saved ({len(per_example)} examples). Re-run with --resume to continue.[/]")
+          raise
 
     elapsed = time.time() - t0
     accuracy = correct / total if total else 0.0
@@ -332,6 +389,8 @@ def main() -> None:
     parser.add_argument("--no-thinking", action="store_true")
     parser.add_argument("--sample", type=int, default=None, metavar="N")
     parser.add_argument("--val-file", default=VAL_FILE)
+    parser.add_argument("--resume", action="store_true", help="Resume from checkpoint if available")
+    parser.add_argument("--parallel", type=int, default=1, metavar="N", help="Parallel API calls (default: 1)")
     args = parser.parse_args()
 
     api_key = os.getenv("GEMINI_API_KEY", "")
@@ -359,18 +418,26 @@ def main() -> None:
 
     all_results = []
     for model in args.models:
-        result = run_model(client, model, examples, thinking_budget)
-        all_results.append(result)
-
         slug = model.replace("/", "-").replace(".", "_")
         thinking_label = f"_thinking{thinking_budget}" if thinking_budget != 0 else ""
         sample_label = f"_n{args.sample}" if args.sample else ""
         out_path = os.path.join(
             RESULTS_DIR, f"gemini_goker_{slug}{thinking_label}{sample_label}.json"
         )
+        ckpt_path = os.path.join(
+            RESULTS_DIR, f"gemini_goker_{slug}{thinking_label}{sample_label}.ckpt.json"
+        ) if args.resume else ""
+
+        result = run_model(client, model, examples, thinking_budget, checkpoint_path=ckpt_path, parallel=args.parallel)
+        all_results.append(result)
+
         with open(out_path, "w") as f:
             json.dump(result, f, indent=2)
         console.print(f"[green]Saved:[/] {out_path}")
+
+        if ckpt_path and os.path.exists(ckpt_path):
+            os.remove(ckpt_path)
+            console.print(f"[dim]Checkpoint removed.[/]")
 
         if os.path.exists(STOP_FILE):
             os.remove(STOP_FILE)

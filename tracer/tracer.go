@@ -75,6 +75,66 @@ func RunProgram(ctx context.Context, sourceFile, outputDir string) (*RunResult, 
 	}, nil
 }
 
+// RunDir compiles a Go package directory (e.g. programs/instrumented/01_chan) and runs
+// it. Unlike RunProgram (which takes a single .go file), this supports programs that
+// import internal packages such as weave/instrumented.
+//
+// extraEnv is merged on top of os.Environ(); use it to set WEAVE_TRACE_FILE,
+// WEAVE_SYNC_FILE, and any other env vars the program reads.
+func RunDir(ctx context.Context, packageDir, outputDir string, extraEnv map[string]string) (*RunResult, error) {
+	if err := os.MkdirAll(outputDir, 0o755); err != nil {
+		return nil, fmt.Errorf("create output dir %s: %w", outputDir, err)
+	}
+
+	name := filepath.Base(packageDir)
+	binaryPath := filepath.Join(outputDir, name)
+
+	buildCmd := exec.Command("go", "build", "-race", "-o", binaryPath, "./"+packageDir)
+	if out, err := buildCmd.CombinedOutput(); err != nil {
+		return nil, fmt.Errorf("build %s: %w\n%s", packageDir, err, strings.TrimSpace(string(out)))
+	}
+
+	env := os.Environ()
+	for k, v := range extraEnv {
+		env = append(env, k+"="+v)
+	}
+
+	// Determine the trace file path from extraEnv for the RunResult.
+	traceFile := extraEnv["WEAVE_TRACE_FILE"]
+
+	cmd := exec.CommandContext(ctx, binaryPath)
+	cmd.Env = env
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	runErr := cmd.Run()
+
+	exitCode := 0
+	timedOut := false
+
+	if runErr != nil {
+		if ctx.Err() != nil {
+			timedOut = true
+			exitCode = -1
+		} else if exitErr, ok := runErr.(*exec.ExitError); ok {
+			exitCode = exitErr.ExitCode()
+		} else {
+			return nil, fmt.Errorf("run %s: %w", name, runErr)
+		}
+	}
+
+	return &RunResult{
+		TraceFile:  traceFile,
+		RaceOutput: stderr.String(),
+		ExitCode:   exitCode,
+		TimedOut:   timedOut,
+		Stdout:     stdout.String(),
+		Stderr:     stderr.String(),
+	}, nil
+}
+
 // RunCompiledProgram executes a pre-built binary under the tracer, setting the
 // trace file output to traceFile. It passes the trace output path via the
 // WEAVE_TRACE_FILE environment variable.

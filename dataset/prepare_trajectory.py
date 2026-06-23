@@ -30,7 +30,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 try:
     from transformers import AutoTokenizer
-    _tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen2.5-Coder-1.5B-Instruct", trust_remote_code=True)
+    _tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen3-8B", trust_remote_code=True)
 except Exception:
     _tokenizer = None
 
@@ -154,7 +154,9 @@ def main(min_steps: int = 3, max_steps: int = 5,
 
         program_id     = d25["program_id"]
         program_source = d25["program_source"]
-        is_val         = program_id.startswith("goker_")
+        # GoKer programs are the primary OOD held-out test set.
+        # p20val_ programs are the instrumented val set for the GoUnblock A/B metric.
+        is_val         = program_id.startswith("goker_") or program_id.startswith("p20val_")
         dest            = val_items if is_val else train_items
 
         k25 = len(d25["partial_trace"])

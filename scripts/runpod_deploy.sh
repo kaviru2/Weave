@@ -7,7 +7,7 @@
 #
 # Optional env vars:
 #   RUNPOD_KEY   — SSH key path (default: ~/.ssh/id_runpod)
-#   MODEL_ID     — HuggingFace model (default: Qwen/Qwen2.5-Coder-7B-Instruct)
+#   MODEL_ID     — HuggingFace model (default: Qwen/Qwen3-8B)
 #   EPOCHS       — training epochs (default: 3)
 #   BATCH_SIZE   — per-device batch size (default: 1, tuned for 20GB VRAM)
 #   GRAD_ACCUM   — gradient accumulation steps (default: 8)
@@ -20,7 +20,7 @@ set -e
 RUNPOD_IP="${RUNPOD_IP:?Set RUNPOD_IP to your pod's IP}"
 RUNPOD_PORT="${RUNPOD_PORT:?Set RUNPOD_PORT to your pod's SSH port}"
 RUNPOD_KEY="${RUNPOD_KEY:-$HOME/.ssh/id_runpod}"
-MODEL_ID="${MODEL_ID:-Qwen/Qwen2.5-Coder-7B-Instruct}"
+MODEL_ID="${MODEL_ID:-Qwen/Qwen3-8B}"
 EPOCHS="${EPOCHS:-3}"
 BATCH_SIZE="${BATCH_SIZE:-1}"
 GRAD_ACCUM="${GRAD_ACCUM:-8}"
@@ -62,11 +62,9 @@ if [ "$USE_TRAJ" = "1" ]; then
         root@$RUNPOD_IP:/root/
 else
     scp $SCP_OPTS \
-        dataset/output/kaggle_upload/train_point_dups.jsonl \
-        dataset/output/kaggle_upload/val_point_dups.jsonl \
-        dataset/output/aggregated.json \
+        dataset/output/train_point_dups.jsonl \
+        dataset/output/val_point_dups.jsonl \
         dataset/train_lora_unsloth.py \
-        dataset/train_lora_kl.py \
         eval/simulation_rollout.py \
         scripts/run_eval.py \
         scripts/runpod_pod.sh \

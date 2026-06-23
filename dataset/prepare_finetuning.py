@@ -25,7 +25,7 @@ from typing import Any, Dict, List, Tuple
 
 try:
     from transformers import AutoTokenizer
-    tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen2.5-Coder-1.5B-Instruct", trust_remote_code=True)
+    tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen3-8B", trust_remote_code=True)
 except Exception as e:
     tokenizer = None
 

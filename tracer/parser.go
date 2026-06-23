@@ -1,6 +1,7 @@
 package tracer
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -12,6 +13,11 @@ import (
 // ParseTrace reads a Go execution trace file produced by runtime/trace and returns
 // a slice of StateSnapshots — one per significant goroutine scheduler event.
 // Each snapshot contains the full state of every live goroutine at that moment.
+//
+// When the program used weave/instrumented wrappers, the trace also contains
+// EventLog events with category "weave-sync". These are parsed inline and used to
+// populate the Channels and Mutexes maps in each snapshot, providing the cross-goroutine
+// linkage that makes GoUnblock events traceable to their causal channel or mutex.
 func ParseTrace(traceFile string) ([]StateSnapshot, error) {
 	f, err := os.Open(traceFile)
 	if err != nil {
@@ -24,8 +30,9 @@ func ParseTrace(traceFile string) ([]StateSnapshot, error) {
 		return nil, fmt.Errorf("create trace reader: %w", err)
 	}
 
-	// goroutines tracks the current state of every live goroutine.
 	goroutines := make(map[uint64]GoroutineState)
+	chans := make(map[string]*liveChan)
+	mutexes := make(map[string]*liveMutex)
 	var snapshots []StateSnapshot
 	eventID := 0
 
@@ -38,7 +45,19 @@ func ParseTrace(traceFile string) ([]StateSnapshot, error) {
 			return nil, fmt.Errorf("read event: %w", err)
 		}
 
-		if ev.Kind() != gotrace.EventStateTransition {
+		switch ev.Kind() {
+		case gotrace.EventLog:
+			// Instrumented sync event — update live channel/mutex state but do not emit snapshot.
+			log := ev.Log()
+			if log.Category == syncLogCategory {
+				applySyncLog(log.Message, chans, mutexes)
+			}
+			continue
+
+		case gotrace.EventStateTransition:
+			// Goroutine scheduler event — emit a snapshot.
+
+		default:
 			continue
 		}
 
@@ -54,11 +73,10 @@ func ParseTrace(traceFile string) ([]StateSnapshot, error) {
 
 		localsHint := getTopFunction(ev.Stack())
 
-		// Always update the live state map, even for transitions we don't emit snapshots for.
+		// Always update the live goroutine map, even for transitions we don't emit.
 		updateGoroutineState(goroutines, goid, to, blockedOn, localsHint)
 
 		if evType == "" {
-			// Transition is not one we emit snapshots for (e.g. GoUndetermined → any).
 			continue
 		}
 
@@ -68,13 +86,81 @@ func ParseTrace(traceFile string) ([]StateSnapshot, error) {
 			EventType:   evType,
 			GoroutineID: goid,
 			Goroutines:  copyGoroutines(goroutines),
-			Channels:    map[string]any{},
-			Mutexes:     map[string]any{},
+			Channels:    snapshotChans(chans),
+			Mutexes:     snapshotMutexes(mutexes),
 		})
 		eventID++
 	}
 
 	return snapshots, nil
+}
+
+const syncLogCategory = "weave-sync"
+
+// applySyncLog parses one "weave-sync" log message and updates the live channel/mutex
+// state maps. It mirrors the applyEvent logic in sync_merge.go but operates on the
+// inline log stream rather than a sidecar file.
+func applySyncLog(msg string, chans map[string]*liveChan, mutexes map[string]*liveMutex) {
+	var p syncPayload
+	if json.Unmarshal([]byte(msg), &p) != nil {
+		return
+	}
+	applyEvent(&p, chans, mutexes)
+}
+
+// syncPayload mirrors instrumented.SyncPayload — kept separate to avoid import cycles.
+type syncPayload struct {
+	Kind     string `json:"kind"`
+	ChanID   string `json:"chan_id,omitempty"`
+	MutexID  string `json:"mutex_id,omitempty"`
+	GoID     uint64 `json:"goid"`
+	QCount   int    `json:"qcount,omitempty"`
+	DataQSiz int    `json:"dataqsiz,omitempty"`
+	Holder   uint64 `json:"holder,omitempty"`
+}
+
+func applyEvent(p *syncPayload, chans map[string]*liveChan, mutexes map[string]*liveMutex) {
+	switch p.Kind {
+	case "chan_create":
+		chans[p.ChanID] = &liveChan{dataqsiz: p.DataQSiz}
+
+	case "chan_send_block":
+		lc := chanOrNew(chans, p.ChanID, p.DataQSiz)
+		lc.sendWaiters = appendUniq(lc.sendWaiters, p.GoID)
+
+	case "chan_send_done":
+		if lc, ok := chans[p.ChanID]; ok {
+			lc.qcount = p.QCount
+			lc.sendWaiters = removeUint64(lc.sendWaiters, p.GoID)
+		}
+
+	case "chan_recv_block":
+		lc := chanOrNew(chans, p.ChanID, p.DataQSiz)
+		lc.recvWaiters = appendUniq(lc.recvWaiters, p.GoID)
+
+	case "chan_recv_done":
+		if lc, ok := chans[p.ChanID]; ok {
+			lc.qcount = p.QCount
+			lc.recvWaiters = removeUint64(lc.recvWaiters, p.GoID)
+		}
+
+	case "mutex_create":
+		mutexes[p.MutexID] = &liveMutex{}
+
+	case "mutex_lock_start":
+		lm := mutexOrNew(mutexes, p.MutexID)
+		lm.waiters = appendUniq(lm.waiters, p.GoID)
+
+	case "mutex_lock_done":
+		lm := mutexOrNew(mutexes, p.MutexID)
+		lm.waiters = removeUint64(lm.waiters, p.GoID)
+		lm.holder = p.Holder
+
+	case "mutex_unlock":
+		if lm, ok := mutexes[p.MutexID]; ok {
+			lm.holder = 0
+		}
+	}
 }
 
 // mapTransition maps a (from, to) goroutine state pair to our EventType schema.
