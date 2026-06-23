@@ -41,6 +41,11 @@ detectable from partial traces — a formal consequence of the goroutine's state
 | **Gemini 3.5 Flash zero-shot (thinking=auto)** | **GoKer held-out** | **event_type accuracy** | **34.8%** |
 | **Qwen2.5-Coder-7B fine-tuned CE (Phase 13)** | **GoKer held-out** | **event_type accuracy** | **36.2%** |
 | **Qwen2.5-Coder-7B KL-trained (Phase 14)** | **GoKer held-out** | **event_type accuracy** | **35.8%** |
+| **Qwen2.5-Coder-7B traj-trained (Phase 16)** | **GoKer held-out** | **event_type accuracy** | **40.1%** |
+| Qwen2.5-Coder-7B traj (Phase 16) | GoKer held-out | mean survival steps | **10.48** |
+| Qwen3-8B zero-shot (Phase 20) | GoKer held-out | event_type accuracy | 24.9% |
+| Qwen3-8B CE fine-tuned (Phase 20) | GoKer held-out | event_type accuracy | 36.0% |
+| **Qwen3-8B traj-trained (Phase 20)** | **545 traj val** | **event_type accuracy** | **47.2%** (GoUnblock 0%→9%) |
 | Multi-step coherence probe — leak programs (Phase 15) | GoKer held-out | mean survival steps | 1.11 |
 | Multi-step coherence probe — race programs (Phase 15) | GoKer held-out | mean survival steps | 0.67 |
 | Distribution prompting, no thinking (Phase 7) | in-distribution | ECE | 0.183 |
@@ -79,8 +84,12 @@ nondeterminism level) and are automatically discovered by the dataset builder.
 
 | Split | Examples | Description |
 |-------|----------|-------------|
-| `train_point_dups.jsonl` | 945 | Fine-tuning examples — hand-crafted + generated programs only |
+| `train_point_dups.jsonl` | 945 | Point-prediction fine-tuning — hand-crafted + generated programs only |
 | `val_point_dups.jsonl` | 798 | **GoKer held-out test set** — real-world bugs, unseen during training |
+| `train_trajectory.jsonl` | 680 | **Trajectory training data** (Phase 16/20) — multi-step rollouts, 18 with enriched channel/mutex state |
+| `val_trajectory.jsonl` | 545 | Trajectory val set — 525 GoKer + 20 Phase 20 instrumented (p20val_) |
+| `train_traj_1step.jsonl` | — | Phase 17 ablation — single-step trajectory format |
+| `val_traj_1step.jsonl` | — | Phase 17 ablation val |
 | `train_dist.jsonl` | 189 | Distribution-format training examples |
 | `val_dist.jsonl` | 162 | Distribution-format GoKer test examples |
 | `aggregated.json` | 75 groups | Empirical next-event distributions with Dirichlet posteriors |
@@ -98,6 +107,9 @@ nondeterministic interleavings. GoKer programs are held out entirely from traini
 | Weave-CCWM 1.5B (Phase 12) | [kavirubc/weave-ccwm-qwen2.5-coder-1.5b-lora](https://huggingface.co/kavirubc/weave-ccwm-qwen2.5-coder-1.5b-lora) | QLoRA on Qwen2.5-Coder-1.5B, 40.2% in-dist |
 | **Weave-CCWM 7B CE (Phase 13)** | [kavirubc/weave-ccwm-qwen2.5-coder-7b-lora](https://huggingface.co/kavirubc/weave-ccwm-qwen2.5-coder-7b-lora) | QLoRA on Qwen2.5-Coder-7B via Unsloth, **36.2% GoKer held-out** |
 | **Weave-CCWM 7B KL (Phase 14)** | [kavirubc/weave-ccwm-qwen2.5-coder-7b-kl-lora](https://huggingface.co/kavirubc/weave-ccwm-qwen2.5-coder-7b-kl-lora) | KL distribution loss, **35.8% GoKer held-out**, ECE 0.169 |
+| **Weave-CCWM 7B Traj (Phase 16)** | [kavirubc/weave-ccwm-qwen2.5-coder-7b-traj-lora](https://huggingface.co/kavirubc/weave-ccwm-qwen2.5-coder-7b-traj-lora) | Trajectory training, **40.1% GoKer held-out**, 10.48 mean survival steps |
+| Weave-CCWM Qwen3-8B CE (Phase 20) | [kavirubc/weave-ccwm-qwen3-8b-ce-lora](https://huggingface.co/kavirubc/weave-ccwm-qwen3-8b-ce-lora) | QLoRA on Qwen3-8B, **36.0% GoKer held-out** |
+| **Weave-CCWM Qwen3-8B Traj (Phase 20)** | [kavirubc/weave-ccwm-qwen3-8b-traj-lora](https://huggingface.co/kavirubc/weave-ccwm-qwen3-8b-traj-lora) | Trajectory training on Qwen3-8B, **47.2%** on 545 traj val; GoUnblock 0%→9% |
 
 Phase 13 training: 3 epochs, batch=1, grad_accum=8, seq_len=4096, LoRA r=16/α=32.
 RTX 4000 Ada (20GB), ~2h 11min. Train loss: 0.058. Total compute: ~$12.
@@ -203,10 +215,10 @@ weave/
 
 ## Limitations and Future Work
 
-- **Accuracy ceiling at 35–36%:** Three approaches (CE fine-tuning, KL fine-tuning, Gemini zero-shot) all converge near 36%. Rare event types (GoEnd, GoSched) are never predicted; distribution shift between hand-crafted training and real GoKer programs explains part of the gap.
-- **Multi-step coherence breaks after ~1 step:** The model was trained on single-step prediction; autoregressive rollout produces scheduler-invalid transitions after roughly one step.
-- **Ballerina extension:** Requires WSO2 conversation for server access and a Ballerina tracer. Next major research phase.
-- **arXiv submission pending** endorsement (cs.PL primary, cs.SE cross-list).
+- **Accuracy ceiling at ~40%:** Trajectory training (Phase 16) lifted the ceiling to 40.1%, but rare event types (GoEnd, GoSched: 0% accuracy) and GoUnblock (0%) remain blind spots. GoEnd/GoSched are a data imbalance issue; GoUnblock is an observability limit — the Go runtime tracer does not expose which channel/mutex caused the unblock.
+- **GoUnblock observability gap:** Phase 20 introduces a wrapper library (`instrumented/WeaveChan`, `WeaveMutex`) that embeds causal channel/mutex state directly into the scheduler trace. The A/B experiment on p20val_ examples will confirm whether this recovers GoUnblock accuracy.
+- **Multi-step coherence:** Trajectory training (Phase 16) increased mean survival steps from ~1 to **10.48** — a 10× improvement. All 54 GoKer programs survive ≥5 steps.
+- **Future:** Stratified sampling to fix GoEnd/GoSched; eBPF-based observability for full channel buffer state; Ballerina extension as a second concurrent language.
 
 ---
 

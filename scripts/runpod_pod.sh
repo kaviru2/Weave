@@ -103,10 +103,12 @@ echo " PHASE 2: EVALUATION"
 echo "========================================"
 
 python /root/run_eval.py \
-    --adapter  "$OUTPUT_DIR" \
-    --val_file "$VAL_FILE" \
-    --model_id "$MODEL_ID" \
-    --out_file /root/eval_results.json
+    --adapter    "$OUTPUT_DIR" \
+    --val_file   "$VAL_FILE" \
+    --model_id   "$MODEL_ID" \
+    --out_file   /root/eval_results.json \
+    --also_base \
+    2>&1 | tee /root/eval.log
 
 # ── Phase 15/16 rollout — run after KL or trajectory training ────────────────
 if [ "$USE_TRAJ" = "1" ] || [ "$USE_KL" = "1" ]; then

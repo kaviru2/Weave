@@ -34,53 +34,8 @@ def get_device():
     return torch.device("cpu")
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--adapter",  required=True)
-    parser.add_argument("--val_file", required=True)
-    parser.add_argument("--model_id", default="Qwen/Qwen3-8B")
-    parser.add_argument("--out_file", default="eval_results.json")
-    parser.add_argument("--max_tokens", type=int, default=4096)
-    parser.add_argument("--load_in_4bit", action="store_true",
-                        help="Load base model in 4-bit (use on CUDA when VRAM < 16GB)")
-    args = parser.parse_args()
-
-    device = get_device()
-    dtype = torch.bfloat16 if device.type == "mps" else torch.float16
-    print(f"Device: {device}  |  dtype: {dtype}  |  4-bit: {args.load_in_4bit}")
-    print(f"Loading base model: {args.model_id}")
-
-    tokenizer = AutoTokenizer.from_pretrained(args.model_id, trust_remote_code=True)
-    tokenizer.truncation_side = "left"
-
-    load_kwargs = dict(trust_remote_code=True)
-    if args.load_in_4bit and device.type == "cuda":
-        load_kwargs["quantization_config"] = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=torch.bfloat16,
-            bnb_4bit_use_double_quant=True,
-        )
-        load_kwargs["device_map"] = "auto"
-    elif device.type == "cuda":
-        load_kwargs["torch_dtype"] = dtype
-        load_kwargs["device_map"] = "auto"
-    else:
-        load_kwargs["torch_dtype"] = dtype
-
-    base_model = AutoModelForCausalLM.from_pretrained(args.model_id, **load_kwargs)
-    if device.type not in ("cuda",):
-        base_model = base_model.to(device)
-
-    print(f"Loading adapter: {args.adapter}")
-    model = PeftModel.from_pretrained(base_model, args.adapter)
-    model.eval()
-    print("Model ready.\n")
-
-    with open(args.val_file) as f:
-        examples = [json.loads(line) for line in f]
-    print(f"Evaluating {len(examples)} examples...")
-
+def evaluate(model, tokenizer, examples, device, args, label="fine-tuned"):
+    """Run eval loop and return results dict."""
     correct = 0
     total   = 0
     per_pattern = defaultdict(lambda: {"correct": 0, "total": 0})
@@ -89,6 +44,7 @@ def main():
     per_example = []
     t0 = time.time()
 
+    print(f"\nEvaluating {len(examples)} examples  [{label}]...")
     for i, ex in enumerate(examples):
         messages     = ex["messages"]
         ground_truth = messages[-1]["content"]
@@ -146,11 +102,9 @@ def main():
             print(f"  [{i+1:3d}/{total}]  {correct}/{i+1} = {correct/(i+1):.1%}  ({elapsed:.0f}s)")
 
     elapsed = time.time() - t0
-
     print("\n" + "=" * 65)
-    print(f"  event_type accuracy : {correct}/{total} = {correct/total:.1%}")
-    print(f"  Zero-shot baseline  : 56.0%")
-    print(f"  Elapsed             : {elapsed:.0f}s")
+    print(f"  [{label}] event_type accuracy : {correct}/{total} = {correct/total:.1%}")
+    print(f"  Elapsed : {elapsed:.0f}s")
     print("=" * 65)
 
     print("\n  By concurrency pattern:")
@@ -163,19 +117,82 @@ def main():
         acc = c["correct"]/c["total"] if c["total"] else 0
         print(f"    {nd:<10}  {c['correct']:3d}/{c['total']:3d} = {acc:.1%}")
 
-    results = {
-        "model": args.model_id, "adapter": args.adapter,
+    return {
+        "model": args.model_id, "adapter": getattr(args, "adapter", None),
+        "label": label,
         "total_examples": total, "correct": correct,
-        "accuracy": correct/total, "zero_shot_baseline": 0.56,
+        "accuracy": correct/total,
         "elapsed_seconds": elapsed,
         "by_pattern":       {k: v for k, v in per_pattern.items()},
         "by_nondeterminism":{k: v for k, v in per_nd.items()},
         "confusion":        {gt: dict(row) for gt, row in confusion.items()},
         "per_example":      per_example,
     }
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--adapter",    required=True)
+    parser.add_argument("--val_file",   required=True)
+    parser.add_argument("--model_id",   default="Qwen/Qwen3-8B")
+    parser.add_argument("--out_file",   default="eval_results.json")
+    parser.add_argument("--max_tokens", type=int, default=4096)
+    parser.add_argument("--load_in_4bit", action="store_true",
+                        help="Load base model in 4-bit (use on CUDA when VRAM < 16GB)")
+    parser.add_argument("--also_base",  action="store_true",
+                        help="Also eval base model (no adapter) before fine-tuned eval")
+    args = parser.parse_args()
+
+    device = get_device()
+    dtype = torch.bfloat16 if device.type == "mps" else torch.float16
+    print(f"Device: {device}  |  dtype: {dtype}  |  4-bit: {args.load_in_4bit}")
+    print(f"Loading base model: {args.model_id}")
+
+    tokenizer = AutoTokenizer.from_pretrained(args.model_id, trust_remote_code=True)
+    tokenizer.truncation_side = "left"
+
+    load_kwargs = dict(trust_remote_code=True)
+    if args.load_in_4bit and device.type == "cuda":
+        load_kwargs["quantization_config"] = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=torch.bfloat16,
+            bnb_4bit_use_double_quant=True,
+        )
+        load_kwargs["device_map"] = "auto"
+    elif device.type == "cuda":
+        load_kwargs["torch_dtype"] = dtype
+        load_kwargs["device_map"] = "auto"
+    else:
+        load_kwargs["torch_dtype"] = dtype
+
+    base_model = AutoModelForCausalLM.from_pretrained(args.model_id, **load_kwargs)
+    if device.type not in ("cuda",):
+        base_model = base_model.to(device)
+
+    with open(args.val_file) as f:
+        examples = [json.loads(line) for line in f]
+
+    # ── Base model eval (no adapter) ──────────────────────────────────────────
+    if args.also_base:
+        base_model.eval()
+        base_results = evaluate(base_model, tokenizer, examples, device, args,
+                                label="base (no adapter)")
+        base_out = args.out_file.replace(".json", "_base.json")
+        with open(base_out, "w") as f:
+            json.dump(base_results, f, indent=2)
+        print(f"\n  Base results saved to: {base_out}")
+
+    # ── Fine-tuned eval (with adapter) ────────────────────────────────────────
+    print(f"\nLoading adapter: {args.adapter}")
+    model = PeftModel.from_pretrained(base_model, args.adapter)
+    model.eval()
+    print("Fine-tuned model ready.\n")
+
+    results = evaluate(model, tokenizer, examples, device, args, label="fine-tuned")
     with open(args.out_file, "w") as f:
         json.dump(results, f, indent=2)
-    print(f"\n  Results saved to: {args.out_file}")
+    print(f"\n  Fine-tuned results saved to: {args.out_file}")
 
 
 if __name__ == "__main__":

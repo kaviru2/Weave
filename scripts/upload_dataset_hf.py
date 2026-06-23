@@ -27,9 +27,15 @@ KAGGLE_DIR = OUTPUT_DIR / "kaggle_upload"
 
 FILES_TO_UPLOAD = [
     # (local_path, repo_path)
-    (KAGGLE_DIR / "train_point_dups.jsonl",  "data/train.jsonl"),
-    (KAGGLE_DIR / "val_point_dups.jsonl",    "data/validation.jsonl"),
-    (OUTPUT_DIR / "aggregated.json",         "data/aggregated.json"),
+    (KAGGLE_DIR / "train_point_dups.jsonl",   "data/train.jsonl"),
+    (KAGGLE_DIR / "val_point_dups.jsonl",     "data/validation.jsonl"),
+    (OUTPUT_DIR / "aggregated.json",          "data/aggregated.json"),
+    # Phase 16 trajectory training data
+    (OUTPUT_DIR / "train_trajectory.jsonl",   "data/train_trajectory.jsonl"),
+    (OUTPUT_DIR / "val_trajectory.jsonl",     "data/val_trajectory.jsonl"),
+    # Phase 17 ablation data
+    (OUTPUT_DIR / "train_traj_1step.jsonl",   "data/train_traj_1step.jsonl"),
+    (OUTPUT_DIR / "val_traj_1step.jsonl",     "data/val_traj_1step.jsonl"),
 ]
 
 
