@@ -29,31 +29,33 @@ plt.rcParams.update({
     "legend.fontsize":    6.0,
     "axes.spines.top":    False,
     "axes.spines.right":  False,
+    "axes.edgecolor":     "#475569",   # clean slate edge
+    "axes.linewidth":     0.6,
     "axes.grid":          True,
     "axes.grid.axis":     "y",
-    "grid.color":         "#E8E8E8",
-    "grid.linewidth":     0.5,
+    "grid.color":         "#F1F5F9",   # light slate grid
+    "grid.linewidth":     0.4,
     "lines.linewidth":    1.2,
     "pdf.fonttype":       42,   # embed fonts (required for IEEE)
     "ps.fonttype":        42,
 })
 
 # ── Palette ────────────────────────────────────────────────────────────────────
-OUR    = "#C8552B"   # our method  — orange-red
-BASE   = "#4878CF"   # baselines   — blue
-GRAY   = "#888888"   # neutral
-GREEN  = "#3A7D44"   # good / high accuracy
-AMBER  = "#C8860A"   # warning / distributional gap
-RED    = "#C8552B"   # bad / zero accuracy
+OUR    = "#C8552B"   # our method  — rust orange
+BASE   = "#2E5E8C"   # baselines   — slate blue (cwmblue)
+GRAY   = "#64748B"   # neutral     — cool gray
+GREEN  = "#059669"   # good        — emerald green
+AMBER  = "#D97706"   # warning     — warm amber
+RED    = "#DC2626"   # bad         — red
 
-# Per-event class colours (solid RGB tuples for matplotlib compatibility)
+# Per-event class colours
 CLASS_COLOR = {
-    "GoBlock":   "#4878CF",
-    "GoStart":   "#4878CF",
-    "GoCreate":  "#3A7D44",
-    "GoEnd":     "#C8860A",
-    "GoSched":   "#C8860A",
-    "GoUnblock": "#C8552B",
+    "GoBlock":   "#2E5E8C",
+    "GoStart":   "#2E5E8C",
+    "GoCreate":  "#059669",
+    "GoEnd":     "#D97706",
+    "GoSched":   "#D97706",
+    "GoUnblock": "#DC2626",
 }
 
 
@@ -80,11 +82,12 @@ def fig_accuracy():
 
     fig, ax = plt.subplots(figsize=(3.5, 2.5))
 
-    bars = ax.bar(range(len(labels)), accs, color=colors, width=0.58,
-                  edgecolor="white", linewidth=0.5, zorder=3)
+    edgecolors = [c if c != GRAY else "#475569" for c in colors]
+    bars = ax.bar(range(len(labels)), accs, color=colors, width=0.48,
+                  edgecolor=edgecolors, linewidth=0.6, zorder=3)
 
     # majority-class reference line
-    ax.axhline(35.5, color=GRAY, linestyle="--", linewidth=1.0, zorder=2,
+    ax.axhline(35.5, color=GRAY, linestyle="--", linewidth=0.8, zorder=2,
                label="Majority-class baseline (35.5 %)")
 
     # value labels — staggered to avoid overlap
@@ -96,7 +99,7 @@ def fig_accuracy():
 
     # "partial" footnote below the bar label for Gemini Pro
     ax.text(3, 36.4 + 0.35 + 0.9, "partial†",
-            ha="center", fontsize=5.5, color=GRAY, style="italic")
+             ha="center", fontsize=5.5, color=GRAY, style="italic")
 
     # significance annotation for our model — anchored above-left of the
     # trajectory bar so it clears the 40.1% bar label
@@ -106,8 +109,8 @@ def fig_accuracy():
                                 color=OUR, lw=0.8,
                                 connectionstyle="arc3,rad=-0.2"),
                 fontsize=5.5, color=OUR, ha="center", va="center",
-                bbox=dict(boxstyle="round,pad=0.2", fc="white",
-                          ec=OUR, linewidth=0.6))
+                bbox=dict(boxstyle="round,pad=0.25", fc="#FFF5F5",
+                          ec=OUR, linewidth=0.5))
 
     ax.set_xticks(range(len(labels)))
     ax.set_xticklabels(labels, fontsize=6.5, rotation=18, ha="right",
@@ -161,14 +164,14 @@ def fig_perevent():
         rgba_faded  = _alpha_hex(zone_col, 35)
         rgba_medium = _alpha_hex(zone_col, 65)
 
-        ax.bar(x[i] - w,   tp,  w, color=rgba_faded,  edgecolor="none",
-               zorder=3, label="Train freq." if i == 0 else "")
-        ax.bar(x[i],       vp,  w, color=rgba_medium, edgecolor="none",
-               zorder=3, label="Val freq."   if i == 0 else "")
+        ax.bar(x[i] - w,   tp,  w, color=rgba_faded,  edgecolor=zone_col,
+               linewidth=0.4, zorder=3, label="Train freq." if i == 0 else "")
+        ax.bar(x[i],       vp,  w, color=rgba_medium, edgecolor=zone_col,
+               linewidth=0.4, zorder=3, label="Val freq."   if i == 0 else "")
 
         # Accuracy bar — solid zone colour
         rgba_solid = _alpha_hex(zone_col, 100)
-        ax.bar(x[i] + w,   acc, w, color=rgba_solid,  edgecolor="white",
+        ax.bar(x[i] + w,   acc, w, color=rgba_solid,  edgecolor=zone_col,
                linewidth=0.4, zorder=4, label="Accuracy" if i == 0 else "")
 
         # Accuracy annotation above the bar
@@ -181,15 +184,16 @@ def fig_perevent():
                     ha="center", va="bottom", fontsize=6,
                     fontweight="bold", color=zone_col)
 
+    # Separators between zones
+    for x_sep in [1.5, 2.5, 4.5]:
+        ax.axvline(x_sep, color="#CBD5E1", linestyle=":", linewidth=0.8, zorder=1)
+
     # Zone labels at the top
     for lo, hi, col, label in zones:
         mid = (lo + hi) / 2
-        ax.text(mid, 77, label, ha="center", va="bottom",
+        ax.text(mid, 78, label, ha="center", va="bottom",
                 fontsize=6.5, color=col, fontweight="bold",
                 multialignment="center")
-        # Thin top bracket
-        bx0, bx1 = lo - 0.4, hi + 0.4
-        ax.plot([bx0, bx1], [76, 76], color=col, lw=1.0, zorder=5)
 
     # Legend
     leg_handles = [
