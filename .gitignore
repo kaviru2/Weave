@@ -38,7 +38,3 @@ gobench_temp/
 *.blg
 *.log
 *.pdf
-
-# Keep downloaded papers
-!downloaded_papers/
-!downloaded_papers/*.pdf
