@@ -22,7 +22,18 @@ PAPERS = {
     "17_lora": "https://arxiv.org/pdf/2106.09685.pdf",
     "18_qlora": "https://arxiv.org/pdf/2305.14314.pdf",
     "19_qwen": "https://arxiv.org/pdf/2409.12186.pdf",
-    "20_flanagan2002": "https://www.cs.williams.edu/~freund/papers/02-esop.pdf"
+    "20_flanagan2002": "https://users.soe.ucsc.edu/~cormac/papers/esop02.pdf",
+    "21_flanagan2005dynamic": "https://users.soe.ucsc.edu/~cormac/papers/popl05.pdf",
+    "22_gu2024cruxeval": "https://arxiv.org/pdf/2401.03065.pdf",
+    "23_roziere2023codellama": "https://arxiv.org/pdf/2308.12950.pdf",
+    "24_guo2024deepseekcoder": "https://arxiv.org/pdf/2401.14196.pdf",
+    "25_davis2024chatdbg": "https://arxiv.org/pdf/2403.16354.pdf",
+    "26_li2023starcoder": "https://arxiv.org/pdf/2305.06161.pdf",
+    "27_owicki1976": "https://www.cs.cornell.edu/courses/cs6117/2015fa/readings/owicki-gries-76.pdf",
+    "30_jimenez2024swebench": "https://arxiv.org/pdf/2310.06770.pdf",
+    "33_madaan2023selfrefine": "https://arxiv.org/pdf/2305.15294.pdf",
+    "34_chen2023codet": "https://arxiv.org/pdf/2207.10397.pdf",
+    "35_bouzenia2025repairagent": "https://arxiv.org/pdf/2403.17134.pdf"
 }
 
 output_dir = "downloaded_papers"
