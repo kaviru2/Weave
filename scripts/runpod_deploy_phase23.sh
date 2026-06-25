@@ -45,12 +45,13 @@ echo "Files uploaded."
 
 # ── 3. Install deps ────────────────────────────────────────────────────────────
 echo ""
-echo "[3/5] Installing deps (unsloth handles everything)..."
+echo "[3/5] Installing deps..."
 ssh $SSH_OPTS root@$RUNPOD_IP "
     export HF_HOME=/workspace/hf_cache
     mkdir -p /workspace/hf_cache
     pip install -q unsloth
-    pip install -q -U transformers peft bitsandbytes accelerate
+    pip install -q 'transformers>=4.51.3,<5.6.0' peft bitsandbytes accelerate
+    pip install -q -U bitsandbytes
 "
 echo "Deps installed."
 
@@ -63,7 +64,7 @@ ssh $SSH_OPTS root@$RUNPOD_IP "
         --model_id   Qwen/Qwen3-8B \
         --train_file /root/train_point_dups_balanced.jsonl \
         --val_file   /root/val_point_dups.jsonl \
-        --output_dir /root/lora_adapter_phase23 \
+        --output_dir /workspace/lora_adapter_phase23 \
         --epochs     $EPOCHS \
         --batch_size 1 \
         --grad_accum 8 \

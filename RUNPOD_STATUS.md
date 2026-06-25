@@ -4,6 +4,56 @@ Live tracker for GPU training runs. Update after each run.
 
 ---
 
+## Session 2026-06-25 — Phase 23 Stratified CE Training — 🟡 RUNNING
+
+| Field | Value |
+|-------|-------|
+| **Status** | 🟡 RUNNING |
+| **Pod name** | phase 20 |
+| **GPU** | L4 (24GB VRAM) |
+| **IP / Port** | 213.173.105.25 : 10087 |
+| **SSH key** | `~/.ssh/id_runpod` |
+| **Cost** | $0.39/hr compute + $0.003/hr storage |
+| **Network vol** | Weave (40GB) @ `/workspace` — model weights + adapter saved here |
+| **Model** | `Qwen/Qwen3-8B` (cached at `/workspace/hf_cache`) |
+| **Train data** | `train_point_dups_balanced.jsonl` (2,004 ex — balanced 200/class) |
+| **Val data** | `val_point_dups.jsonl` (1,287 ex, 103 GoKer) |
+| **Adapter saved to** | `/workspace/lora_adapter_phase23` (persists on network vol) |
+| **Train log** | `/root/train_phase23.log` |
+
+**Goal:** Balanced oversampling (GoSched 4→200 ex, GoEnd 22→200 ex) to validate Class 1 taxonomy claim.
+
+**Monitor:**
+```bash
+RUNPOD_IP=213.173.105.25 RUNPOD_PORT=10087 python3 scripts/monitor_pods.py
+# or raw tail:
+ssh root@213.173.105.25 -p 10087 -i ~/.ssh/id_runpod 'tail -f /root/train_phase23.log'
+```
+
+**When training done — run eval:**
+```bash
+RUNPOD_IP=213.173.105.25 RUNPOD_PORT=10087 bash scripts/runpod_eval_phase23.sh
+```
+
+**Download results:**
+```bash
+scp -P 10087 -i ~/.ssh/id_runpod root@213.173.105.25:/root/eval_results_phase23.json eval/results/eval_results_phase23.json
+scp -P 10087 -i ~/.ssh/id_runpod -r root@213.173.105.25:/workspace/lora_adapter_phase23 lora_adapter_phase23/
+```
+
+---
+
+## Session 2026-06-25 — Phase 22 Expanded Eval — COMPLETE
+
+| Field | Value |
+|-------|-------|
+| **Status** | DONE — pod terminated 2026-06-25 |
+| **GPU** | RTX 2000 Ada (16GB) |
+| **Result** | **25.3%** (326/1287), **3.6% GoUnblock** (2/55) on 103 GoKer |
+| **Local file** | `eval/results/eval_results_phase22.json` |
+
+---
+
 ## Session 2026-06-25 — Phase 22 Dataset Expansion & Inference — PLANNED
 
 ### Expanded Evaluation on 103 GoKer Bugs

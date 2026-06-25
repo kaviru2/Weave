@@ -32,11 +32,11 @@ except ImportError:
 PODS = [
     {
         "name": "Phase 23",
-        "desc": "Balanced CE train / Qwen3-8B",
-        "host": os.environ.get("RUNPOD_IP", ""),
-        "port": os.environ.get("RUNPOD_PORT", ""),
+        "desc": "Balanced CE / Qwen3-8B / L4",
+        "host": os.environ.get("RUNPOD_IP", "213.173.105.25"),
+        "port": os.environ.get("RUNPOD_PORT", "10087"),
         "log":  "/root/train_phase23.log",
-        "result": "/root/lora_adapter_phase23/adapter_config.json",
+        "result": "/workspace/lora_adapter_phase23/adapter_config.json",
         "color": "cyan",
     },
 ]

@@ -39,7 +39,7 @@ echo "[3/3] Launching eval..."
 ssh $SSH_OPTS root@$RUNPOD_IP "
     export HF_HOME=/workspace/hf_cache
     HF_HOME=/workspace/hf_cache nohup python -u /root/run_eval.py \
-        --adapter  /root/lora_adapter_phase23 \
+        --adapter  /workspace/lora_adapter_phase23 \
         --val_file /root/val_point_dups.jsonl \
         --load_in_4bit \
         --out_file /root/eval_results_phase23.json \
@@ -56,5 +56,5 @@ echo "   ssh root@$RUNPOD_IP -p $RUNPOD_PORT -i $RUNPOD_KEY 'tail -f /root/eval_
 echo ""
 echo " Download when done:"
 echo "   scp $SCP_OPTS root@$RUNPOD_IP:/root/eval_results_phase23.json eval/results/eval_results_phase23.json"
-echo "   scp $SCP_OPTS -r root@$RUNPOD_IP:/root/lora_adapter_phase23 lora_adapter_phase23/"
+echo "   scp $SCP_OPTS -r root@$RUNPOD_IP:/workspace/lora_adapter_phase23 lora_adapter_phase23/"
 echo "========================================"
