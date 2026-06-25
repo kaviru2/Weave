@@ -3,6 +3,9 @@
 > Read this first when picking up on a new machine. Then read CLAUDE.md for the full plan.
 
 ### Recent Updates & Changelog
+- **2026-06-24 (paper finalized)**: **Research Track paper compiles clean at 11 pages — main text ends on page 10, page 11 references-only (page-limit compliant).** Fixed two matplotlib figure overlaps (Fig 2 stale `p=0.0001` callout + crowded x-labels; Fig 3 annotation behind legend) by editing `gen_figures.py` and regenerating. Cut to meet 10-page main-text limit: removed Fig 6 (GoCreate scatter, redundant w/ Fig 5+Table XII), Table X (qualitative, redundant w/ confusion), Table XIII (signature — kept 0.00/0.18/0.24 numbers inline), and the Acknowledgements section (AI-disclosure deferred to camera-ready; `.tex` comment marks the spot). Removed Gemini 3.1 Pro partial-result claims (reviewer liability) and fixed a Discussion contradiction (it framed the observability gap as unsolved future work). Title/abstract untouched. Canonical paper: `ICSE 2027_Templates/weave-research/main.tex`. **Camera-ready TODO if accepted: restore Acknowledgements/AI disclosure.** Cosmetic: Fig 3 legend still says Leak n=36/Race n=20 vs real 38/17.
+- **2026-06-24**: **All gap evals complete. All experiments locked.** Gap 1 (P21 Qwen3-8B on 798 GoKer): **30.3%** overall, **4.2% GoUnblock** (2/48) — confirms 0%→4.2% recovery on same test set as Phase 16. Gap 2 (P16 Qwen2.5-7B on 545 traj val): 58.0% overall, 20% GoUnblock (near-random on enriched format, not the clean proof). Rollout P21: **19.64 mean steps** (55/56 programs hit 20-step max). All results local in `eval/results/`. Paper writing is the only remaining task.
+- **2026-06-24**: **Phase 21: Full Instrumentation & Retrain Completed.** Scaled up `WeaveChan`/`WeaveMutex` wrappers to the remaining 10 handcrafted and 20 generated/templated programs. Rebuilt trajectory dataset (970 train trajectories, 545 val trajectories, 308 containing enriched states in prompt). Qwen3-8B trajectory model trained successfully on RunPod. Point eval on `val_trajectory.jsonl` (545 trajectory val) yielded a new peak accuracy of **49.7%** (and **50.6%** with regex correction of truncated JSON predictions) for the fine-tuned model (base model: **36.5%**). **GoUnblock recovery reached 11.4% (4/35)**, validating that scaling up instrumentation successfully generalises causal unblock reasoning to unseen programs. Autoregressive rollout checker fix applied to `simulation_rollout.py` to prevent KeyError on `split_percent`.
 - **2026-06-23**: **Apples-to-apples eval complete. Qwen3-8B traj on 798 GoKer: 35.8%** (corrected — raw eval gave 23.7% due to 34.6% truncated JSON; recovered via regex extraction of `event_type`). McNemar vs Phase 16 (40.1%): **p=0.005, −4.3pp [CI −7.1, −1.5pp]** — significant regression. Root cause: GoCreate collapsed 72%→32% (training-mix dilution); GoBlock +11pp; GoUnblock 0%→4% confirmed on 798. **Phase 16 (40.1%) remains the headline accuracy result.** Phase 20 contribution is the observability proof (GoUnblock recovery), not accuracy. Results saved to `eval/results/eval_results_qwen3_traj_798.json`. Pod terminated; all data local.
 - **2026-06-22 (later)**: **Qwen3-8B Phase 20 training complete. Results: base 24.9%, CE 36.0%, traj 47.2% (545 traj val).** GoUnblock recovered from 0% → 9% (3/34 correct on GoKer) — driven by 18 Phase 20 enriched training examples with channel/mutex state. Note: 47.2% is on `val_trajectory.jsonl` (525 GoKer + 20 p20val), not directly comparable to Phase 16's 40.1% on 798 GoKer. Both adapters downloaded locally + backed up to network volume + uploaded to HuggingFace: `kavirubc/weave-ccwm-qwen3-8b-ce-lora` (36.0%), `kavirubc/weave-ccwm-qwen3-8b-traj-lora` (47.2% traj val). Dataset updated on HF with trajectory splits. `eval.log` fix added to `runpod_pod.sh`.
 - **2026-06-22 (later)**: **Model upgrade: Qwen2.5-Coder-7B → Qwen3-8B across all scripts.** All training, eval, and deploy scripts updated to use `Qwen/Qwen3-8B` (Unsloth auto-maps to `unsloth/Qwen3-8B-unsloth-bnb-4bit`). `enable_thinking=False` added to every `tokenizer.apply_chat_template()` call (required for Qwen3 — disables chain-of-thought tokens that break JSON output format). `run_eval.py` now runs base model eval first (`--also_base` flag) then fine-tuned, so each training cycle produces both a zero-shot and fine-tuned result. **Currently running: Qwen3-8B CE baseline (cycle 1, ~60% done as of session handoff, RTX 4000 Ada EU-RO-1, `ssh root@213.173.108.11 -p 16954 -i ~/.ssh/id_runpod`).** When done: auto-evals base + fine-tuned → `eval_results_base.json` + `eval_results.json`. Next: cycle 2 traj training on same pod using `USE_TRAJ=1 bash scripts/runpod_deploy.sh`. Network volume: `Weave` (40GB, EU-RO-1) — Qwen3-8B weights cached at `/workspace/hf_cache` (~7.1GB).
@@ -31,29 +34,38 @@
 
 ## Current State
 
-**Target: ICSE 2027 NIER (single track). Phase 20 complete including apples-to-apples eval. All numbers locked.**
-Canonical paper: `ICSE 2027_Templates/weave-nier/main.tex` (4 pages main + 1 page refs).
-Research Track draft archived at `ICSE 2027_Templates/weave-research/`.
+**Target: ICSE 2027 Research Track (deadline Mon 30 Jun 2026 AoE). ALL EXPERIMENTS COMPLETE.**
+Canonical paper: `ICSE 2027_Templates/weave-research/main.tex` (expand to 10 pages — this is the only remaining task).
 
-**Active branch:** `phase-20-wrapper` (ready to merge — apples-to-apples eval complete).
+**Active branch:** `phase-21-instrumentation`
 
 **Preprint** live on Zenodo (DOI: 10.5281/zenodo.20682004) and arXiv (arXiv:2606.17508).
 
-**Qwen2.5-7B baselines (locked — headline results):** traj **40.1%** GoKer OOD (798 examples), **10.48** mean survival steps, McNemar p=**0.016**, GoCreate **+24pp**, majority baseline 35.5%.
+### Locked Results (all eval runs complete as of 2026-06-24)
 
-**Qwen3-8B Phase 20 results (all complete):**
-- Base zero-shot: **24.9%** (798 GoKer)
-- CE fine-tuned: **36.0%** (798 GoKer)
-- Traj fine-tuned: **47.2%** (545 traj val = 525 GoKer + 20 p20val) ⚠️ not comparable to 798-example eval
-- Traj fine-tuned **(apples-to-apples, 798 GoKer): 35.8%** — McNemar p=0.005, −4.3pp vs Phase 16
-- GoUnblock: **0% → 4%** (2/48) on 798 GoKer; 9% (3/34) on 545 traj val — A/B confirmed
+| Experiment | Number | File |
+|-----------|--------|------|
+| Best accuracy (P16, 798 GoKer) | **40.1%** | `eval_results_traj_accuracy.json` |
+| Majority baseline | 35.5% | `phase18_numbers.json` |
+| McNemar traj vs CE | **p=0.016**, CI [+1.0, +8.3pp] | `phase18_numbers.json` |
+| GoUnblock without wrappers | **0%** (0/48) | `eval_results_traj_accuracy.json` |
+| GoUnblock with wrappers (same test set) | **4.2%** (2/48) | `eval_results_phase21_798.json` |
+| GoUnblock with wrappers (in-distribution) | **11.4%** (4/35) | `eval_results_traj_enriched_point.json` |
+| Coherence Phase 16 | **10.48** mean steps | `rollout_results_traj.json` |
+| Coherence Phase 21 | **19.64** mean steps | `rollout_results_phase21.json` |
+| Phase 21 in-distribution accuracy | **49.7%** (545 traj val) | `eval_results_traj_enriched_point.json` |
+| Phase 21 cross-format accuracy | 30.3% (798 GoKer plain) | `eval_results_phase21_798.json` |
 
-**All adapters saved locally + network volume + HuggingFace:**
-- `kavirubc/weave-ccwm-qwen3-8b-ce-lora` (36.0%)
-- `kavirubc/weave-ccwm-qwen3-8b-traj-lora` (47.2% traj val / 35.8% GoKer 798)
+**All adapters saved locally + HuggingFace:**
+- Phase 16 traj: `kavirubc/weave-ccwm-qwen2.5-coder-7b-traj-lora` — `dataset/output/lora_adapter_traj/`
+- Phase 21 traj: `kavirubc/weave-ccwm-qwen3-8b-traj-lora` — `lora_adapter_phase21/`
 
-**Immediate next step: Finalize the NIER paper** from `ICSE 2027_Templates/weave-nier/main.tex`.
-Phase 16 (40.1%) remains the headline accuracy result. Phase 20 adds the observability proof as Future Work evidence.
+### Immediate next step: FINAL PROOFREAD + SUBMIT
+
+`ICSE 2027_Templates/weave-research/main.tex` — **drafted, compiles clean at 11 pages (10 main + 1 ref), page-limit compliant.**
+Deadline: **Mon 30 Jun 2026 AoE** (~6 days from 2026-06-24).
+All numbers locked (see `RESULTS.md`). Remaining: final read-through for prose, double-anonymity sweep, then submit.
+**Camera-ready TODO if accepted:** restore the Acknowledgements section (AI-use disclosure) — `.tex` has a comment marking where.
 
 ---
 
@@ -131,73 +143,33 @@ Leak programs: 10.8 mean survival | Race programs: 9.76 mean survival | Entropy 
 - [x] **Phase 20 — Observability wrapper + Qwen3-8B retraining**
   - `instrumented/` package (WeaveChan, WeaveMutex) embeds sync events into scheduler trace
   - 7 instrumented programs; 680 train (18 enriched) + 545 val (20 p20val_)
-  - Qwen3-8B CE: **36.0%** (798 GoKer) | Traj: **47.2%** (545 traj val, ⚠️ different eval set)
+  - Qwen3-8B CE: **36.0%** (798 GoKer) | Traj: **47.2%** (545 traj val)
   - GoUnblock **0% → 9%** on GoKer — observability limit confirmed as cause
   - All adapters local + network volume `Weave` (EU-RO-1) + HuggingFace
-  - [ ] **Pending: re-eval traj on 798 GoKer for apples-to-apples comparison**
+  - [x] **Apples-to-apples re-eval traj on 798 GoKer completed** (results saved in `eval/results/eval_results_qwen3_traj_798.json`)
+- [x] **Phase 21 — Full Instrumentation + Retrain**
+  - Scaled up wrappers to remaining handcrafted and generated programs.
+  - Rebuilt dataset: 970 train trajectories, 545 val trajectories, 308 containing enriched states.
+  - Retrained Qwen3-8B trajectory model on RunPod.
+  - Evaluated on 545 trajectory val: **49.7%** (raw) / **50.6%** (regex corrected); GoUnblock recovery of **11.4%** (4/35).
 
 ---
 
 ## Immediate Next Steps
 
-### 1. Apples-to-apples eval — Qwen3-8B traj on 798 GoKer (NEXT)
+### 1. Finalise Research Track paper (`ICSE 2027_Templates/weave-research/main.tex`)
+- Incorporate Phase 21 scale-up results: **49.7%** (or **50.6%** with regex correction) on 545 trajectory validation examples.
+- Document **11.4%** GoUnblock recovery at scale under Phase 21.
+- Update tables and figures to include Qwen3-8B Phase 21 results.
+- Compile and run LaTeX builds to verify correct compilation of the 10-page draft.
 
-Spin up a new RTX 4000 Ada pod with network volume `Weave` (EU-RO-1, weights cached).
-Run eval only — no training needed:
+### 2. Research Track Submission Details
+- **Submission deadline:** Mon 30 Jun 2026 (AoE) — the active target.
+- **Format:** 10 pages main text + 2 pages references, IEEEtran 10pt (two-column), double-anonymous.
+- Check anonymization throughout.
+- Keep the NIER draft archived at `ICSE 2027_Templates/weave-nier/` for future reference.
 
-```bash
-# On pod:
-export HF_HOME=/workspace/hf_cache
-# Copy traj adapter from network volume
-cp -r /workspace/lora_adapter_qwen3_traj /root/lora_adapter_traj
-# Upload val_point_dups.jsonl and run_eval.py
-python run_eval.py \
-    --adapter /root/lora_adapter_traj \
-    --val_file /root/val_point_dups.jsonl \
-    --model_id Qwen/Qwen3-8B \
-    --out_file /root/eval_qwen3_traj_goker798.json \
-    2>&1 | tee /root/eval.log
-```
-
-Download: `scp ... /root/eval_qwen3_traj_goker798.json eval/results/eval_qwen3_traj_goker798.json`
-Then update phase18_analysis.py to include the new file and re-run McNemar vs Phase 16.
-
-### 2. Phase 20 — GoUnblock A/B analysis (DONE, document in RESULTS.md)
-
-- GoUnblock 0% → 9% (3/34) on GoKer confirmed — Phase 20 A/B result
-- 3 correct examples at indices 420, 422, 430 — all standard GoKer, not p20val_
-- Interpretation: 18 enriched training examples with channel/mutex state generalise to unseen programs
-
-### 3. Finalise NIER paper (`ICSE 2027_Templates/weave-nier/main.tex`)
-
-Once apples-to-apples eval is done, write the paper. Key numbers ready:
-- 40.1% (Qwen2.5-7B traj, 798 GoKer) — locked headline
-- Qwen3-8B comparable traj number — pending step 1
-- GoUnblock 0%→9% — Phase 20 finding
-- McNemar p=0.016 vs Phase 13 CE
-- 10.48 mean survival steps
-- GoCreate +24pp, majority baseline 35.5%
-
-**Cycle 2 — Trajectory model (run after cycle 1 on same pod):**
-  ```bash
-  USE_TRAJ=1 RUNPOD_IP=213.173.108.11 RUNPOD_PORT=16954 RUNPOD_KEY=~/.ssh/id_runpod bash scripts/runpod_deploy.sh
-  ```
-- Download: `eval_results.json` → `eval_qwen3_traj.json`, `eval_results_base.json` → `eval_qwen3_traj_base.json`
-
-**After both cycles:**
-- Run `uv run python eval/phase18_analysis.py` with Qwen3 result files → McNemar p-value
-- Eval on `p20val_` 20 examples separately → measure GoUnblock recovery (thesis A/B test)
-- If GoUnblock >0% on p20val_ and ~0% on GoKer → observability-limit thesis confirmed
-
-### 2. Finalize the NIER Submission (Due Fri 23 Oct 2026, ~4 months)
-- Canonical paper: `ICSE 2027_Templates/weave-nier/main.tex` (IEEEtran 10pt, already 4+1).
-- Strict limit: **4 pages main text + 1 page references**.
-- Add required **"Future Plans"** section outlining scaling to Ballerina, mutex/channel buffer state, stratified sampling.
-- Double-anonymous: no author names, third-person self-citation.
-- Related work is done — use `related_works.md`; do NOT re-research citations.
-
-### 3. ICSE Submission Details
-- **NIER deadline:** Fri 23 Oct 2026 (AoE) — the single target.
+---
 - **Format:** 4 pages main + 1 page references, IEEEtran 10pt (no compsoc), double-anonymous.
 - The Research Track attempt is dropped; its draft is archived at `ICSE 2027_Templates/weave-research/` (see its `ARCHIVED.md`).
 

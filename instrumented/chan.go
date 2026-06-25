@@ -86,6 +86,13 @@ func (wc *WeaveChan[T]) Recv() (T, bool) {
 	return v, ok
 }
 
+// Chan returns the underlying channel for use in select statements.
+// Only the select receive case is supported; all other operations should
+// use Recv/Send/Close to preserve the observability trace.
+func (wc *WeaveChan[T]) Chan() chan T {
+	return wc.ch
+}
+
 // Close closes the underlying channel and emits a chan_close event.
 func (wc *WeaveChan[T]) Close() {
 	emit(SyncPayload{Kind: "chan_close", ChanID: wc.id, GoID: curGoid()})

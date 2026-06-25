@@ -53,19 +53,23 @@ must an execution trace expose for the hard events to become learnable?*
 |---|---|---|---|---|
 | **19** (checkpoint) | RQ2, RQ3 | Stratified-sampling retrain (Class-1; add hook to `prepare_trajectory.py`) + formal select-block **Proposition** (free) + rollout-vs-real-tracer metric | ~$2–6 | Lift GoEnd/GoSched off 0%, > 40.1%; theorem; stronger coherence claim — **feeds the NIER paper** |
 | **20** (thesis core) | RQ1 | Build Go instrumentation exposing channel-buffer + mutex-holder state at unblock; regenerate traces; retrain; measure GoUnblock recovery (controlled: with vs without state) | ~$10–30 | The observability result — converts the Class-2 limitation into the central finding |
-| **21** (payoff) | RQ2, RQ4 | Define downstream oracle task; eval vs GCatch/GFuzz; optional symbolic soundness check (Neural-Model-Checking template) | ~$10–20 | "Learned concurrent runtime as an execution-free oracle" |
-| **22** (consolidation) | RQ4 | Scale corpus / GoBench coverage; calibration-driven abstention for bug triage | moderate | Robust tool-grade evaluation |
-| **23** (horizon) | RQ5 | Ballerina tracer from scratch (WSO2); strand-event corpus; cross-language transfer | WSO2 + modest GPU | Cross-language CSP world model |
+| **21** (payoff) | RQ1+RQ2 | Full corpus instrumentation (37 programs); rebuild trajectory dataset (970 train, 308 enriched); retrain Qwen3-8B; gap evals on 798 GoKer + rollout | ~$15 | **COMPLETE.** 49.7% in-dist, GoUnblock 0%→11.4%, 19.64 mean rollout steps |
+| **22** (scale + baselines) | RQ2+RQ4 | **Dataset scale-up**: instrument GoReal 82 programs → ~2–3× training data. Add stronger neural execution baselines (not just zero-shot commercial APIs). Calibration-driven abstention for bug triage. | ~$20–40 | Larger corpus; reviewer-grade baseline comparison; downstream oracle utility |
+| **23** (CWM warm-start) | RQ3 | Fine-tune `facebook/cwm-sft` (32B, QLoRA on A40) on Go execution traces; measure Python→Go transfer vs. training from scratch on Qwen3-8B. Contingent on Phase 22 dataset being ready. | ~$10–20 on A40 | Validates (or rules out) transfer from sequential CWM pre-training to concurrent Go execution |
+| **24** (horizon) | RQ5 | Ballerina tracer from scratch (WSO2); strand-event corpus; cross-language transfer from Go model | WSO2 + modest GPU | Cross-language CSP world model — **deprioritized; post-thesis** |
 
-## How the NIER paper fits as the first checkpoint
+> **Phase 22 priority note (added 2026-06-25):** Phase 22 directly addresses the two primary reviewer concerns raised against the Research Track submission: (1) *toy dataset* — GoReal 82 programs are production bugs from 9 open-source systems; instrumenting them with WeaveChan/WeaveMutex and generating traces would roughly triple the training corpus. (2) *weak baselines* — adding a comparison against a neural execution model (not just zero-shot commercial LLM) strengthens the experimental section. Phase 23 (Meta CWM warm-start) is medium priority contingent on Phase 22; Phase 24 (Ballerina) is deprioritized until Phase 22/23 are complete.
 
-The **ICSE 2027 NIER paper (deadline Fri 23 Oct 2026)** reports the *Candidate A* result — the Go,
-distribution-aware concurrent execution model: 40.1% next-event accuracy, 10.48 survival steps,
-McNemar p=0.016, GoCreate +24pp, ECE 0.169, the select-block Proposition — and frames its three-class
-limitation taxonomy (data / observability / semantic) as the bridge to the thesis. Specifically, the
-paper's **Future Plans** section becomes the public statement of RQ1 (observability-complete tracing,
-Phase 20) and RQ5 (Ballerina, Phase 23). Phase 19 strengthens the checkpoint; Phases 20–23 are the
-thesis the checkpoint points at. The NIER paper is honest emerging-results; the thesis is the program.
+## How the Research Track paper fits as the first checkpoint
+
+**Updated 2026-06-25: Pivoted from NIER → ICSE 2027 Research Track (abstract registered 2026-06-23, paper deadline Mon 30 Jun 2026 AoE).**
+
+The **Research Track paper** (`ICSE 2027_Templates/weave-research/main.tex`) reports the full result:
+40.1% next-event accuracy (trajectory vs. CE, McNemar p=0.016), 19.64 mean rollout steps,
+GoUnblock 0%→11.4% via WeaveChan/WeaveMutex, three-class limitation taxonomy.
+The paper's Discussion/Conclusion frames Phase 22 (dataset scale, stronger baselines) as explicit
+future work, making the reviewer concern a publicly-acknowledged open problem rather than a weakness.
+Phases 22–24 are the thesis programme the paper points at.
 
 ## Positioning guardrails (from the sweep)
 

@@ -66,9 +66,9 @@ ALL_EVENT_TYPES = ["GoBlock", "GoCreate", "GoEnd", "GoSched", "GoStart", "GoUnbl
 # ── LoRA backend state (lazy-loaded) ───────────────────────────────────────
 _lora_model     = None
 _lora_tokenizer = None
-_LORA_ADAPTER   = os.path.join(BASE_DIR, "dataset", "output", "lora_adapter")
-_LORA_BASE      = "Qwen/Qwen2.5-Coder-1.5B-Instruct"
-_LORA_MAX_TOKENS = 512   # CPU constraint; bump to 1024 if running on GPU
+_LORA_ADAPTER   = os.environ.get("LORA_ADAPTER", os.path.join(BASE_DIR, "dataset", "output", "lora_adapter"))
+_LORA_BASE      = os.environ.get("LORA_BASE", "Qwen/Qwen2.5-Coder-1.5B-Instruct")
+_LORA_MAX_TOKENS = 1024
 
 # ── Unsloth backend state (lazy-loaded) ────────────────────────────────────
 _unsloth_model     = None
@@ -88,13 +88,14 @@ def _load_lora_model():
 
     logging.info(f"Loading LoRA model: {_LORA_BASE}")
     _lora_tokenizer = AutoTokenizer.from_pretrained(_LORA_BASE, trust_remote_code=True)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     base = AutoModelForCausalLM.from_pretrained(
         _LORA_BASE,
-        dtype=torch.float16,
+        torch_dtype=torch.float16,
+        device_map="auto",
         trust_remote_code=True,
     )
     _lora_model = PeftModel.from_pretrained(base, _LORA_ADAPTER)
-    _lora_model = _lora_model.to(torch.device("cpu"))
     _lora_model.eval()
     logging.info("LoRA model ready.")
 
@@ -172,6 +173,7 @@ def _smart_truncate_for_lora(prompt_messages, max_tokens=_LORA_MAX_TOKENS):
     reconstructed = [system_msg, {"role": "user", "content": new_user}]
     prompt = _lora_tokenizer.apply_chat_template(
         reconstructed, tokenize=False, add_generation_prompt=True,
+        enable_thinking=False,
     )
     return _lora_tokenizer(
         prompt, return_tensors="pt",
@@ -319,7 +321,7 @@ def call_lora_model(prompt_messages: List[Dict[str, str]], temp: float) -> str:
     with torch.no_grad():
         output_ids = _lora_model.generate(
             **inputs,
-            max_new_tokens=60,
+            max_new_tokens=80,
             do_sample=do_sample,
             temperature=temp if do_sample else 1.0,
             pad_token_id=_lora_tokenizer.eos_token_id,
@@ -358,12 +360,18 @@ def call_unsloth_model(prompt_messages: List[Dict[str, str]], temp: float) -> st
 def parse_response(raw: str) -> Tuple[Optional[str], Optional[int], Optional[str]]:
     """Cleans markdown syntax and decodes predicted event type and goroutine ID."""
     text = raw.strip()
+
+    # Strip Qwen3 thinking tags if enable_thinking wasn't honored
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+
+    # Strip markdown fences
     if text.startswith("```"):
         lines = text.split("\n")
         if len(lines) >= 2:
             text = "\n".join(lines[1:])
         text = text.rstrip("`").strip()
 
+    # Try direct JSON parse
     try:
         data = json.loads(text)
         event_type = data.get("event_type")
@@ -373,6 +381,26 @@ def parse_response(raw: str) -> Tuple[Optional[str], Optional[int], Optional[str
             return event_type, int(goroutine_id), reasoning
     except Exception:
         pass
+
+    # Fallback: extract first {...} block
+    m = re.search(r"\{[^{}]*\}", text, re.DOTALL)
+    if m:
+        try:
+            data = json.loads(m.group())
+            event_type = data.get("event_type")
+            goroutine_id = data.get("goroutine_id")
+            reasoning = data.get("reasoning", "")
+            if event_type in ALL_EVENT_TYPES and isinstance(goroutine_id, (int, float)):
+                return event_type, int(goroutine_id), reasoning
+        except Exception:
+            pass
+
+    # Last resort: regex extract event_type field
+    m_et = re.search(r'"event_type"\s*:\s*"(Go\w+)"', text)
+    m_gid = re.search(r'"goroutine_id"\s*:\s*(\d+)', text)
+    if m_et and m_gid and m_et.group(1) in ALL_EVENT_TYPES:
+        return m_et.group(1), int(m_gid.group(1)), ""
+
     return None, None, None
 
 
@@ -555,7 +583,7 @@ def run_batch(
     for ex in all_ex:
         pid = ex.get("program_id", "")
         sp  = ex.get("split_percent", 99)
-        if pid not in by_program or sp < by_program[pid]["split_percent"]:
+        if pid not in by_program or sp < by_program[pid].get("split_percent", 99):
             by_program[pid] = ex
 
     programs = list(by_program.values())
