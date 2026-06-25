@@ -523,4 +523,9 @@ Our framing: nondeterminism as distribution, not search space.
 [guocalib] → ECE metric, calibration gap in modern NNs.
 [probcalib + spiess] → calibration is learnable; code-specific calibration gap exists.
 Our contribution: distributional targets arise from program nondeterminism, not a teacher model.
+
+\paragraph{Formal concurrent verification.}
+[godefroid97 + dpor] → POR/DPOR exhaustively explores the interleaving space; our model learns a probabilistic transition function over the same space.
+[flanagan03] → type-and-effect systems verify static safety; we predict dynamic scheduling events.
+Our framing: exhaustive exploration vs. learned probabilistic prediction — complementary, not competing.
 ```

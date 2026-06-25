@@ -147,6 +147,11 @@ multi-turn conversations where each turn appends the correct event and
 requests the next prediction (Fig.~\ref{fig:teaser}).
 This teaches the model to maintain a consistent goroutine state
 thread across multiple predictions.
+Critically, this multi-turn training objective is distinct from standard
+next-token autoregressive decoding at inference time: the training data
+explicitly supervises cross-turn state coherence, which is why
+single-step CE training fails to produce coherent multi-step rollouts
+while trajectory-formatted training succeeds (§\ref{sec:ablation}).
 Second, we identify that the 0\% \eunblock\ prediction rate is an information-theoretic observability limit
 caused by the production Go runtime tracer, which does not expose channel buffer states at unblock time.
 We introduce \texttt{WeaveChan[T]} and \texttt{WeaveMutex}, lightweight wrappers that inject
@@ -352,6 +357,9 @@ The CONCUR benchmark evaluates LLMs on generating correct concurrent code, judge
 \paragraph{Go concurrency bugs and analysis tools.}
 Go concurrency bugs — deadlocks, races, and goroutine leaks — arise in practice even in production systems maintained by experts~\cite{goker}. Our held-out test set uses GoKer kernels from the GoBench suite~\cite{gobench}, which provides minimal reproducers of real concurrency bugs from production Go systems, each verified to exhibit the documented bug behavior. Static analysis tools like GCatch~\cite{gcatch} find blocking concurrency bugs in Go by modeling channel constraints symbolically. Dynamic analysis tools like GFuzz~\cite{gfuzz} and GoPie~\cite{gopie} explore scheduling diversity through increasingly sophisticated strategies to exploit the multiple valid execution orders of concurrent programs to find bugs. These tools treat nondeterminism as a search space to prove the absence or presence of bugs; our approach is complementary: we treat the set of valid orderings as a distributional signal for training an empirical execution model that can express uncertainty about which scheduler events are reachable.
 
+\paragraph{Formal concurrent verification.}
+Classical concurrent verification exhaustively explores the interleaving space via partial-order reduction (POR)~\cite{godefroid97} and its dynamic variant (DPOR)~\cite{dpor}, which groups equivalent traces by Mazurkiewicz independence to avoid redundant state-space exploration. Type-and-effect systems encode safe concurrency properties statically~\cite{flanagan03}. These methods either enumerate the interleaving space or verify a fixed specification; they do not learn a probabilistic model of which scheduler events a real program tends to produce under its workload distribution. Weave is complementary: rather than exhaustive exploration or specification verification, we train a model to predict the next scheduler event from an execution prefix — a learned, probabilistic transition function over the same trace space that POR and DPOR explore.
+
 \paragraph{Distribution training and calibration.}
 The idea that soft distributional targets carry more information than hard labels originates in knowledge distillation~\cite{hinton}. Instruction-tuned models are biased toward overconfident, peaked distributions even when the correct answer is a uniform distribution over options~\cite{diffuse}. We measure this using Expected Calibration Error (ECE), the standard metric for the gap between a model's predicted confidence and its empirical accuracy~\cite{guocalib}. Calibration of LLMs for code tasks is an underexplored problem: Spiess et al. show that even well-performing code models are often poorly calibrated in terms of their confidence matching correctness likelihood~\cite{spiess}. Concurrent work shows probabilistic calibration is a learnable capability in LLMs through soft-target fine-tuning~\cite{probcalib}. Our KL objective directly counteracts overconfidence by soft-target fine-tuning against empirical next-event distributions from repeated concurrent program runs, where the distributional targets are not provided by a teacher model but derived from the nondeterminism of the program itself.
 
@@ -480,6 +488,16 @@ ticker, worker pool with no channel close, done channel never closed).
 Generated programs use randomised parameters and optionally inject bugs.
 Real-world programs are reduced bug kernels from CockroachDB,
 Kubernetes, gRPC, etcd, Istio, and Moby~\cite{goker,gobench}.
+While 130 source programs is modest compared to raw source-code
+corpora, execution trace datasets are categorically more expensive
+to produce: each program requires repeated nondeterministic runs
+to capture scheduling variation, and each trace must be parsed,
+segmented, and formatted into labelled prediction examples.
+The 970 resulting training trajectories cover diverse concurrent
+patterns (channel communication, mutex locking, select-blocking,
+goroutine lifecycle) and are validated against 798 held-out predictions
+from real production bugs — a quality constraint that raw code
+corpora do not impose.
 
 \textbf{Trace collection.}
 Each program is compiled with the race detector
@@ -776,7 +794,7 @@ FSM violation, averaged across 1 rollout sample per program and
 
 \subsection{Resolving the Observability Gap: Causal Wrappers}\label{sec:wrappers}
 
-The Go runtime tracer records that a goroutine unblocked but does not record which channel receive or mutex unlock caused it. This creates an information-theoretic observability limit for any execution model: for certain synchronization patterns, the causal relationship is invisible, forcing $P(\eunblock) \approx 0$ structurally on plain traces. 
+The Go runtime tracer records that a goroutine unblocked but does not record which channel receive or mutex unlock caused it. This creates an information-theoretic observability limit for any execution model: for certain synchronization patterns, the causal relationship is invisible, forcing $P(\eunblock) \approx 0$ structurally on plain traces. This is not a logging convenience or heuristic shortcut — the limit is structural, and no amount of additional training data or model capacity can overcome it on uninstrumented traces.
 
 To resolve this limitation, we implement a lightweight wrapper library (\texttt{WeaveChan[T]} and \texttt{WeaveMutex}) that intercepts standard channel and mutex operations. Instead of writing to a sidecar file or forking the Go runtime, these wrappers inject causal synchronization state (e.g., \texttt{send\_waiters} and \texttt{recv\_waiters} queues) directly into the standard execution trace payload. When the model receives a snapshot prompt, it now explicitly sees the synchronization state linking blocked and unblocked goroutines. This allows the model to map the channel causality directly to the scheduler events without requiring out-of-band tracing infrastructure.
 
