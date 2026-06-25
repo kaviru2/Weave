@@ -59,7 +59,7 @@ echo ""
 echo "[4/5] Launching Phase 23 CE training (balanced)..."
 ssh $SSH_OPTS root@$RUNPOD_IP "
     export HF_HOME=/workspace/hf_cache
-    nohup python -u /root/train_lora_unsloth.py \
+    HF_HOME=/workspace/hf_cache nohup python -u /root/train_lora_unsloth.py \
         --model_id   Qwen/Qwen3-8B \
         --train_file /root/train_point_dups_balanced.jsonl \
         --val_file   /root/val_point_dups.jsonl \
@@ -67,7 +67,7 @@ ssh $SSH_OPTS root@$RUNPOD_IP "
         --epochs     $EPOCHS \
         --batch_size 1 \
         --grad_accum 8 \
-        --max_seq_len 4096 \
+        --max_seq_length 4096 \
         > /root/train_phase23.log 2>&1 &
     echo \"Training PID: \$!\"
 "

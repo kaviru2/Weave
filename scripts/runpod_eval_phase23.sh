@@ -38,7 +38,7 @@ scp $SCP_OPTS \
 echo "[3/3] Launching eval..."
 ssh $SSH_OPTS root@$RUNPOD_IP "
     export HF_HOME=/workspace/hf_cache
-    nohup python -u /root/run_eval.py \
+    HF_HOME=/workspace/hf_cache nohup python -u /root/run_eval.py \
         --adapter  /root/lora_adapter_phase23 \
         --val_file /root/val_point_dups.jsonl \
         --load_in_4bit \
