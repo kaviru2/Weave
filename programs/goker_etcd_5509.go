@@ -11,7 +11,6 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"testing"
 
 	"os"
 	"runtime/trace"

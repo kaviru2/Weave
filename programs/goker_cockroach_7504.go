@@ -18,7 +18,6 @@ package main
 
 import (
 	"sync"
-	"testing"
 
 	"os"
 	"runtime/trace"

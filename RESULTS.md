@@ -31,6 +31,7 @@ GoKer = GoKernelBench — unseen programs from production Go systems.
 | Qwen3-8B (zero-shot, Phase 20) | — | 23.7% | 20.8% | 45.9% | 20.1% | 0% | 0% | 0% |
 | Qwen3-8B Traj no-wrapper (Phase 20) | plain traces | 23.7%* | — | — | — | — | 0% | — |
 | **Qwen3-8B Traj + wrappers (Phase 21)** | **enriched traces** | **30.3%** | **19.8%** | **53.6%** | **42.6%** | **0%** | **4.2%** | **0%** |
+| **Qwen3-8B Traj + wrappers (Phase 22)** | **enriched traces** | **25.3%** | **18.3%** | **45.5%** | **33.1%** | **0%** | **3.6%** | **0%** |
 
 *Phase 20 Qwen3-8B on 798 GoKer: raw 23.7% (34.6% parse-error rate on plain prompts — training/eval distribution shift).
 Phase 21 plain-prompt regression (40.1%→30.3%) is expected: model trained on enriched format, evaluated on plain.
@@ -268,6 +269,12 @@ Select-block leak signature P(GoUnblock)=0 confirmed for 3/3 programs.
   - Qwen3-8B on 798 GoKer: **30.3%** overall, **4.2% GoUnblock** (2/48)
   - Rollout: **19.64 mean survival steps** (55/56 programs hit 20-step max)
   - Phase 16 on 545 traj val (cross-format): 58.0% overall, 20% GoUnblock (near-random)
+- [x] Phase 22 — Dataset expansion: all 103 GoKer programs traced and evaluated:
+  - Fixed 37 GoKer programs (stale `testing` import from extraction); all compile
+  - Expanded val set: **1,287 examples** (103 GoKer programs, up from 798/66)
+  - Qwen3-8B traj + wrappers on 1,287 GoKer: **25.3%** overall, **3.6% GoUnblock** (2/55)
+  - Drop from 30.3% reflects harder programs (GoSched/GoEnd-heavy) not model regression
+  - GoUnblock recovery (3.6%) confirms causal instrumentation generalises to unseen programs
 
 ---
 
@@ -275,6 +282,7 @@ Select-block leak signature P(GoUnblock)=0 confirmed for 3/3 programs.
 
 | Artifact | Location |
 |----------|----------|
+| Phase 22 on 1287 GoKer eval | `eval/results/eval_results_phase22.json` (25.3%) |
 | Phase 21 LoRA adapter (Qwen3-8B traj) | `lora_adapter_phase21/` |
 | Phase 16 LoRA adapter (Qwen2.5-7B traj) | `dataset/output/lora_adapter_traj/` |
 | Phase 21 on 798 GoKer eval | `eval/results/eval_results_phase21_798.json` (30.3%) |

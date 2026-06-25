@@ -26,7 +26,6 @@ import (
 	"fmt"
 	"math/rand"
 	"sync"
-	"testing"
 
 	"os"
 	"runtime/trace"

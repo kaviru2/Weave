@@ -8,7 +8,6 @@
 package main
 
 import (
-	"testing"
 
 	"os"
 	"runtime/trace"

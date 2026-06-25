@@ -22,7 +22,6 @@ package main
 import (
 	"errors"
 	"math/rand"
-	"testing"
 	"time"
 
 	"os"

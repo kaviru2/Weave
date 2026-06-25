@@ -9,7 +9,6 @@ package main
 
 import (
 	"sync"
-	"testing"
 
 	"os"
 	"runtime/trace"
@@ -90,8 +89,12 @@ func NewCore(ws WriteSyncer) Core {
 	}
 }
 
+type fakeT struct{}
+
+func (fakeT) Logf(format string, args ...interface{}) {}
+
 func testing_TestLogger() *SugaredLogger {
-	return NewLogger(t).Sugar()
+	return NewLogger(fakeT{}).Sugar()
 }
 
 func (log *Logger) Sugar() *SugaredLogger {
@@ -154,10 +157,8 @@ func main() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		t.Run("Serving6171", func() {
-			rbm := &revisionBackendsManager{logger: testing_TestLogger(t)}
-			rbm.getOrCreateRevisionWatcher()
-		})
+		rbm := &revisionBackendsManager{logger: testing_TestLogger()}
+		rbm.getOrCreateRevisionWatcher()
 	}()
 	wg.Wait()
 }

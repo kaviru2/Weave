@@ -22,7 +22,6 @@ package main
 import (
 	"context"
 	"errors"
-	"testing"
 
 	"os"
 	"runtime/trace"

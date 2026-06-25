@@ -12,7 +12,6 @@ import (
 
 	"log"
 	"sync"
-	"testing"
 	"time"
 
 	"os"

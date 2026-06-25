@@ -14,6 +14,7 @@ Supports two distinct SFT target strategies:
 Verifies and splits programs into 80% train / 20% validation, stratified by pattern.
 """
 
+import argparse
 import os
 import json
 import random
@@ -305,9 +306,71 @@ def split_programs(aggregated: List[Dict[str, Any]], seed: int = 42) -> Tuple[se
     return train_progs, val_progs
 
 
+def _get_event_type(point_msg: Dict[str, Any]) -> str:
+    """Extracts event_type from a point chat message's assistant content."""
+    try:
+        assistant_content = next(
+            m["content"] for m in point_msg["messages"] if m["role"] == "assistant"
+        )
+        return json.loads(assistant_content)["event_type"]
+    except Exception:
+        return "unknown"
+
+
+def balance_by_event_type(
+    items: List[Dict[str, Any]],
+    min_per_class: int = 200,
+    seed: int = 42,
+) -> List[Dict[str, Any]]:
+    """Oversample rare event types so each class has at least min_per_class examples.
+    Dominant classes are kept as-is (no downsampling). Result is shuffled."""
+    rng = random.Random(seed)
+
+    # Group by event type
+    by_type: Dict[str, List[Dict]] = defaultdict(list)
+    for item in items:
+        by_type[_get_event_type(item)].append(item)
+
+    logging.info("--- EVENT TYPE DISTRIBUTION (before balancing) ---")
+    for et in sorted(by_type):
+        logging.info(f"  {et:12s}: {len(by_type[et])} examples")
+
+    balanced = list(items)  # start with all originals
+    for et, pool in by_type.items():
+        deficit = min_per_class - len(pool)
+        if deficit > 0:
+            oversampled = rng.choices(pool, k=deficit)
+            balanced.extend(oversampled)
+            logging.info(f"  Oversampled {et}: +{deficit} → {len(pool) + deficit} total")
+
+    logging.info("--- EVENT TYPE DISTRIBUTION (after balancing) ---")
+    after: Dict[str, int] = defaultdict(int)
+    for item in balanced:
+        after[_get_event_type(item)] += 1
+    for et in sorted(after):
+        logging.info(f"  {et:12s}: {after[et]} examples")
+
+    rng.shuffle(balanced)
+    return balanced
+
+
 def main():
     """Main execution function."""
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--balanced", action="store_true",
+        help="Oversample rare event types to min_per_class in training set (Phase 23)."
+    )
+    parser.add_argument(
+        "--min-per-class", type=int, default=200,
+        help="Minimum examples per event type when --balanced is set (default: 200)."
+    )
+    args = parser.parse_args()
+
     logging.info("Starting SFT dataset preparation...")
+    if args.balanced:
+        logging.info(f"BALANCED MODE: oversampling rare events to min {args.min_per_class} per class.")
+
     try:
         aggregated = load_aggregated_dataset()
     except Exception as e:
@@ -320,7 +383,6 @@ def main():
 
     train_dist_items = []
     val_dist_items = []
-    
     train_point_items = []
     val_point_items = []
 
@@ -357,25 +419,33 @@ def main():
             else:
                 val_point_items.append(point_msg)
 
+    # Apply stratified oversampling if requested (Phase 23)
+    if args.balanced:
+        train_point_balanced = balance_by_event_type(
+            train_point_items, min_per_class=args.min_per_class
+        )
+    else:
+        train_point_balanced = None
+
     # Write output files
+    os.makedirs(os.path.join(DATASET_DIR, "kaggle_upload"), exist_ok=True)
+
     files_to_write = [
         ("train_dist.jsonl", train_dist_items),
         ("val_dist.jsonl", val_dist_items),
         ("train_point_dups.jsonl", train_point_items),
-        ("val_point_dups.jsonl", val_point_items)
+        ("val_point_dups.jsonl", val_point_items),
     ]
-
-    os.makedirs(os.path.join(DATASET_DIR, "kaggle_upload"), exist_ok=True)
+    if train_point_balanced is not None:
+        files_to_write.append(("train_point_dups_balanced.jsonl", train_point_balanced))
 
     for fname, data_list in files_to_write:
-        # Write to primary output directory
         out_path = os.path.join(DATASET_DIR, fname)
         with open(out_path, "w") as f:
             for item in data_list:
                 f.write(json.dumps(item) + "\n")
         logging.info(f"Wrote {len(data_list)} examples to {out_path}")
 
-        # Sync to kaggle_upload directory
         kaggle_out_path = os.path.join(DATASET_DIR, "kaggle_upload", fname)
         with open(kaggle_out_path, "w") as f:
             for item in data_list:

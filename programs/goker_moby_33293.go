@@ -17,7 +17,6 @@ package main
 import (
 	"errors"
 	"math/rand"
-	"testing"
 
 	"os"
 	"runtime/trace"

@@ -20,7 +20,6 @@ package main
 
 import (
 	"errors"
-	"testing"
 
 	"os"
 	"runtime/trace"

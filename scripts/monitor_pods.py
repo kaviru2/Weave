@@ -31,13 +31,13 @@ except ImportError:
 
 PODS = [
     {
-        "name": "GAP 1",
-        "desc": "P21 Qwen3-8B / 798 GoKer",
-        "host": "213.173.108.219",
-        "port": "17053",
-        "log":  "/root/eval_gap1.log",
-        "result": "/root/eval_results_phase21_798.json",
-        "color": "green",
+        "name": "Phase 23",
+        "desc": "Balanced CE train / Qwen3-8B",
+        "host": os.environ.get("RUNPOD_IP", ""),
+        "port": os.environ.get("RUNPOD_PORT", ""),
+        "log":  "/root/train_phase23.log",
+        "result": "/root/lora_adapter_phase23/adapter_config.json",
+        "color": "cyan",
     },
 ]
 
