@@ -1,0 +1,234 @@
+=== FILE: 10_gfuzz.pdf ===
+
+--- PAGE 1 ---
+Who Goes First?
+Detecting Go Concurrency Bugs via Message Reordering
+Ziheng Liu
+Pennsylvania State University
+USA
+Shihao Xia∗
+Pennsylvania State University
+USA
+Yu Liang
+Pennsylvania State University
+USA
+Linhai Song
+Pennsylvania State University
+USA
+Hong Hu
+Pennsylvania State University
+USA
+ABSTRACT
+Go is a young programming language invented to build safe and
+efficient concurrent programs. It provides goroutines as lightweight
+threads and channels for inter-goroutine communication. Program-
+mers are encouraged to explicitly pass messages through channels
+to connect goroutines, with the purpose of reducing the chance of
+making programming mistakes and introducing concurrency bugs.
+Go is one of the most beloved programming languages and has
+already been used to build many critical infrastructure software
+systems in the data-center environment. However, a recent study
+shows that channel-related concurrency bugs are still common in
+Go programs, severely hurting the reliability of the programs.
+This paper presents GFuzz, a dynamic detector that can effec-
+tively pinpoint channel-related concurrency bugs by mutating the
+processing orders of concurrent messages. We build GFuzz in three
+steps. We first adopt an effective approach to identify concurrent
+messages and transform a program to process those messages in
+any given order. We then take a fuzzing approach to generate new
+processing orders by mutating exercised ones and rely on execu-
+tion feedback to prioritize orders close to triggering bugs. Finally,
+we design a runtime sanitizer to capture triggered bugs that are
+missed by the Go runtime. We evaluate GFuzz on seven popular Go
+software systems, including Docker, Kubernetes, and gRPC. GFuzz
+finds 184 previously unknown bugs and reports a negligible num-
+ber of false positives. Programmers have already confirmed 124
+reports as real bugs and fixed 67 of them based on our reporting.
+A careful inspection of the detected concurrency bugs from gRPC
+shows the effectiveness of each component of GFuzz and confirms
+the components’ rationality.
+CCS CONCEPTS
+· Software and its engineering → Software testing and de-
+bugging; Software reliability.
+∗Shihao Xia contributed equally with Ziheng Liu in this work.
+Permission to make digital or hard copies of all or part of this work for personal or
+classroom use is granted without fee provided that copies are not made or distributed
+for profit or commercial advantage and that copies bear this notice and the full citation
+on the first page. Copyrights for components of this work owned by others than ACM
+must be honored. Abstracting with credit is permitted. To copy otherwise, or republish,
+to post on servers or to redistribute to lists, requires prior specific permission and/or a
+fee. Request permissions from permissions@acm.org.
+ASPLOS ’22, February 28 ś March 4, 2022, Lausanne, Switzerland
+© 2022 Association for Computing Machinery.
+ACM ISBN 978-1-4503-9205-1/22/02. . . $15.00
+https://doi.org/10.1145/3503222.3507753
+KEYWORDS
+Go; Concurrency Bugs; Bug Detection; Dynamic Analysis; Fuzzing
+ACM Reference Format:
+Ziheng Liu, Shihao Xia, Yu Liang, Linhai Song, and Hong Hu. 2022. Who
+Goes First? Detecting Go Concurrency Bugs via Message Reordering. In
+Proceedings of the 27th ACM International Conference on Architectural Support
+for Programming Languages and Operating Systems (ASPLOS ’22), February 28
+ś March 4, 2022, Lausanne, Switzerland. ACM, New York, NY, USA,
+15 pages.
+https://doi.org/10.1145/3503222.3507753
+1 INTRODUCTION
+Go is an industrial programming language invented by Google,
+meant for building safe and efficient concurrent programs [ 73]. In
+recent years, Go’s popularity has increased dramatically, making
+it one of the most beloved and one of the most wanted program-
+ming languages [
+54]. Programmers have already adopted Go to
+build important infrastructure software, such as Docker [ 11], Ku-
+bernetes [36], and gRPC [ 20].
+To facilitate multi-threaded programming, Go offers several built-
+in features, like goroutines and channels. A goroutine is a light-
+weight thread that can be created and reused efficiently in the user
+space, while a channel is a message-passing primitive for com-
+munication between different goroutines. Go programmers are
+encouraged to use channels instead of shared memory to connect
+concurrent goroutines, as explicit message passing is commonly
+believed to be more resistant to concurrency bugs [ 15, 22, 65].
+Unfortunately, concurrent Go programs are still difficult for pro-
+grammers to think through and program correctly. Concurrency
+bugs, which are notoriously difficult to debug [ 8, 34], are still com-
+mon in Go programs [ 58, 68]. A recent empirical study counter-
+intuitively reveals that incorrect message passing contributes to
+a significant proportion of Go concurrency bugs, and misuse of
+channels can be more likely to cause such bugs under certain cir-
+cumstances than misuse of traditional primitives ( e.g., mutexes)
+that protect shared-memory accesses [ 68].
+Existing bug-detection techniques cannot effectively discover Go
+concurrency bugs, especially those due to wrong message passing.
+The main reason is that most existing methods are built for tradi-
+tional programming languages ( e.g., C/C++, Java), and they only
+monitor shared-memory primitives and shared-memory accesses
+[3, 4, 12, 29ś32, 35, 40, 40, 42, 50ś52, 55, 56, 60]. They can neither
+handle message-passing primitives ( e.g., channels) nor detect any
+message-passing-related bugs. Existing model-checking techniques
+can systematically examine all possible message orders to pinpoint
+888
+
+--- PAGE 2 ---
+ASPLOS ’22, February 28 ś March 4, 2022, Lausanne, Switzerland Ziheng Liu, Shihao Xia, Yu Liang, Linhai Song, and Hong Hu
+1 // go parent()
+2 func parent() { // parent goroutine
+3 ... // initialize object daemon
+4 ch, errCh := daemon.discoveryWatcher.Watch()
+5 select {
+6 case <- Fire(1 * time.Second):
+7 Log("Timeout!")
+8 case e := <-ch:
+9 if !reflect.DeepEqual(e, expected) {
+10 Log("Unexpected!")
+11 }
+12 case e := <-errCh:
+13 Log("Error!")
+14 }
+15 return
+16 }
+17 func (s *Discovery) Watch() (chan discovery.Entries, chan error ) {
+18 - ch := make(chan discovery.Entries)
+19 - errCh := make(chan error )
+20 + ch := make(chan discovery.Entries, 1)
+21 + errCh := make(chan error , 1)
+22 go func() { // child goroutine
+23 entries, err := s.fetch()
+24 if err != nil {
+25 errCh <- err
+26 } else {
+27 ch <- entries
+28 } ...
+29 }()
+30 return ch, errCh
+31 }
+Figure 1: A Blocking Bug in Docker and Its Patch. The code
+has been simplified for illustration purposes.
+bugs in distributed systems [ 39, 48, 74]. However, since only very
+few message orders can lead to concurrency bugs, exhaustively in-
+specting all message orders is not efficient to detect channel-related
+bugs in Go programs. We can also find several bug detectors built
+for Go. However, the static detectors either cover a limited num-
+ber of buggy code patterns [
+16, 28], fail to scale to large, real Go
+programs [14, 37, 38, 53, 59], or report significant numbers of false
+positives and false negatives due to imprecise alias analysis [ 45].
+The dynamic detectors for Go merely report concurrency bugs
+triggered in a given execution [ 7, 18, 21, 69]. Without the capabil-
+ity to alter programs’ execution states and increase the chance of
+exposing bugs, these dynamic detectors miss many concurrency
+bugs [68].
+Figure 1 shows a channel-related1 concurrency bug from Docker.
+The parent goroutine calls an object method through an indirect
+call at line 4. The callee is actually function Watch() at lines 17ś31.
+Watch() creates two unbuffered channels ch and errCh at lines
+18 and 19 firstly, then starts a child goroutine at line 22, and fi-
+nally returns the two channels at line 30. The child goroutine calls
+s.fetch() at line 23. It checks the return value and sends a mes-
+sage either to channel errCh at line 25 or to channel ch at line 27.
+Meanwhile, the parent goroutine blocks at the select statement at
+lines 5ś14 until it either receives a message from Fire() after one
+second or from one of the two returned channels. If the message
+from
+Fire() comes first, the parent goroutine chooses the first
+case, which merely logs the timeout and returns. After that, no
+other goroutines have references to channel ch or channel errCh,
+1We use łchannel-related bugž and łmessage-passing-related bugž interchangeably, as
+most message-passing-related bugs are due to misuse of channels [ 45, 68].
+and thus no goroutines can receive messages from the two chan-
+nels anymore. Since both of the channels are unbuffered, the child
+goroutine blocks at one of the sending operations (line 25 or line
+27) endlessly.
+This example demonstrates the difficulty in detecting Go con-
+currency bugs related to channels. The bug only manifests when
+1 the message from Fire() at line 6 arrives earlier than the other
+two messages, so that the select proceeds with the first case.
+Meanwhile, the detector should be able to infer that 2 no other
+goroutines have references to ch or errCh and can unblock the
+child goroutine. Static techniques cannot effectively infer the tar-
+gets of indirect calls, like the one at line 4, and thus they cannot
+determine whether the child goroutine can be unblocked (condition
+2 ). In offline testing, we notice that the message fromFire() never
+comes first and thus current dynamic methods will miss the bug
+due to the lack of condition 1 .
+In this paper, we propose a new dynamic-analysis tool, GFuzz,
+to effectively detect channel-related Go concurrency bugs. We con-
+sider both blocking bugs, where one or more goroutines are stuck
+in their executions, and non-blocking bugs, where all goroutines
+can finish but generate undesired results ( e.g., panics) [68]. GFuzz
+focuses on concurrent messages that are unique to the Go program-
+ming language. Since the processing order of these messages is
+non-deterministic by design, programmers must guarantee a Go
+program works well under all possible processing orders. However,
+due to the huge number of possible orders, programmers with lim-
+ited time and energy are prone to missing some orders, which may
+bring in channel-related bugs.
+Guided by this intuition, GFuzz intentionally mutates the or-
+der of concurrent messages to direct tested programs to different
+execution states and increases the chance of triggering both block-
+ing bugs and non-blocking bugs. Meanwhile, it monitors program
+executions to capture triggered blocking bugs that are (largely)
+undetected by the Go runtime
+2. Take Figure 1 as an example. In
+theory, the message at line 6 could arrive before the ones at line 8
+and line 12 or after them. No matter the order, the code should work
+in both scenarios. However, the programmer does not account for
+the first scenario, thereby introducing the aforementioned bug into
+this example. By intentionally mutating the message order, GFuzz
+can inspect both scenarios and detect the bug.
+Although reordering concurrent messages is straightforward,
+we need to tackle three challenges to build a practical bug detector.
+First, how to identify concurrent messages? Without precise
+information about concurrent messages, GFuzz may enforce a mes-
+sage order that conflicts with an existing happens-before relation,
+leading to a false deadlock that would never happen in real exe-
+cutions. To answer this question, we adopt a simple method that
+considers messages waited for by the sameselect statement. Chan-
+nel operations under the same select can happen simultaneously,
+and thus their messages are concurrent. Moreover, mutating the
+order of these messages preserves the program semantics and en-
+sures the alteration of program execution ( i.e., different exercised
+cases). To enforce a given message order, GFuzz transforms each
+select in a way that a particular case is preferred over all others.
+2The Go runtime can capture triggered channel-related non-blocking bugs.
+889

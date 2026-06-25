@@ -1,0 +1,152 @@
+=== FILE: 13_diffuse.pdf ===
+
+--- PAGE 1 ---
+Published as a conference paper at COLM 2024
+Forcing Diffuse Distributions out of Language Models
+Yiming Zhang1∗, Avi Schwarzschild1, Nicholas Carlini2, Zico Kolter1,3 & Daphne Ippolito1,2
+1Carnegie Mellon University
+2Google DeepMind
+3Bosch Center for AI
+Abstract
+Despite being trained specifically to follow user instructions, today’s instruction-
+tuned language models perform poorly when instructed to produce random out-
+puts. For example, when prompted to pick a number uniformly between one and
+ten Llama-2-13B-chat disproportionately favors the number five, and when tasked
+with picking a first name at random, Mistral-7B-Instruct chooses Avery 40 times
+more often than we would expect based on the U.S. population. When these lan-
+guage models are used for real-world tasks where diversity of outputs is crucial,
+such as language model assisted dataset construction, their inability to produce
+diffuse distributions over valid choices is a major hurdle. In this work, we propose
+a fine-tuning method that encourages language models to output distributions that
+are diffuse over valid outcomes. The methods we introduce generalize across a
+variety of tasks and distributions and make large language models practical for
+synthetic dataset generation with little human intervention.1
+1 Introduction
+Consider a Dungeon Master (DM) trying to use a language model based chatbot to assist in man-
+aging their Dungeons & Dragons campaign. The DM asks the chatbot to suggest a random name
+for a character in the story. The first time she asks, it suggests “Anya,” and the second time it also
+suggests “Anya.” In fact, almost 40% of the time, the suggested name will be “Anya” even when
+the language model is deployed with full random sampling. The DM then tries to use the chatbot
+to roll a twenty-sided die; over 60% of the dice rolls come up as a 14. Frustrated, the DM gives up
+and brings out their physical dice.
+Instruction-tuned language models are extremely bad at producing random outputs when users
+want them to. Even when prompts are carefully constructed with instructions that encourage ran-
+domness, both state-of-the-art open-source and industry language models output very low-entropy
+distributions over the valid options. Beyond Dungeons & Dragons, there are many practical appli-
+cations where diversity across valid options is crucial for language model outputs. For example,
+when language models are used to answer multiple choice or Likert-scale questions, a priori each
+option should be equally likely. When language models are used for synthetic dataset construction,
+such as for synthetic biographies (Maini et al., 2024; Yuan et al., 2021) or instruction-tuning training
+sets (Wang et al., 2023), diversity in the generations is essential but arduous to achieve through
+mere prompt hacking.
+In this work, we examine how far off language model generations are from user expectations of ran-
+domness and diversity. While our experiments focus on instruction-tuned models such as Llama-
+2-chat, our findings do generalize to pre-trained language models in general. 2 We then show how
+∗Correspondence: Yiming Zhang, yimingz3@cs.cmu.edu.
+1Code and data are available at https://github.com/y0mingzhang/diffuse-distributions.
+2For example, when GPT-2 (Radford et al., 2019) is prompted with “She rolled the 20-sided die. It landed
+on the number”, the output distribution is similarly far from uniform.
+1
+arXiv:2404.10859v2  [cs.CL]  7 Aug 2024
+
+--- PAGE 2 ---
+Published as a conference paper at COLM 2024
+0%
+10%
+20%
+30%
+40%Empirical probability
+Gemma (baseline) Gemma (tuned) Llama-2 (baseline) Llama-2 (tuned) Mistral (baseline) Mistral (tuned)
+Anya
+Elara
+Erin
+Eleanor
+Sophia
+Marissa
+Olivia
+Marla
+Morgan
+Elysian
+Talan
+Mila
+Yasmin
+Dane
+Samson
+Hector
+Kassidy
+Monica
+Aubrie
+Kiera
+Aurora
+Luna
+Evangeline
+Elara
+Arabella
+Florence
+Elora
+Raven
+Evelyn
+Rowan
+Alina
+Karina
+Lily
+Zoe
+Jamar
+Nevaeh
+Dana
+Talia
+Yurem
+Keira
+Avery
+Emily
+Oliver
+Harper
+Ella
+Emma
+Alice
+Alexander
+Olivia
+Sophia
+Princess
+Gabriela
+Natalya
+Wyatt
+Anika
+Brennan
+Talia
+Yareli
+Justice
+Brian
+(a) BABY NAMES (top 10 names are shown).
+0%
+20%
+40%
+60%Empirical probability
+5 6 7 8 4 3 2 9 1 10 10 4 1 3 6 2 5 9 8 7 5 7 6 8 4 3 9 1 2 10 10 2 7 1 9 6 3 5 8 4 8 7 5 6 1 4 3 9 2 10 4 9 8 7 10 1 5 3 2 6
+(b) RANDOM NUMBER GENERATION .
+Figure 1: Language models do not produce diffuse probabilities. The output distributions of
+untuned Gemma, Llama-2, and Mistral deviate from what we would expect from natural/random
+distributions. Our tuning method addresses this by diffusing the output distribution over valid
+candidates. The horizontal axes above are sorted in descending order by probability of the output.
+language models can be fine-tuned to produce diffuse distributions over valid options, without
+sacrificing generation quality. Our method supports tasks where the sample set of valid options
+is not easily enumerated, and we show that models fine-tuned to produce diffuse probabilities for
+one set of tasks generalize to other, very different tasks without degrading model utility.
+This generalization allows us to promote diversity in complex settings, such as synthetic dataset
+generation. On the task of generating a dataset of synthetic biographies (similar to the dataset
+created by Maini et al. (2024) for benchmarking language model unlearning), our method generates
+four times as many unique first names, three times as many unique birth places, and 1.5 times as
+many unique careers as the untuned baseline model, all without any need for complex prompt
+engineering, decoding strategy tweaking or manual re-writing.
+2 Preliminaries
+We begin with a formal definition of diffuse probabilities from language models . We then introduce
+techniques for measuring diversity of models outputs and we show how to quantify the differences
+in the observed output distributions and the desired distributions.
+2.1 Problem setting
+Consider a vocabulary V = {1, 2, ...,n}. An autoregressive language model takes a sequence of ℓ
+tokens x ∈ Vℓ as input and outputs a probability distributionpθ(· |x) ∈ ∆(V ) over all tokens in the
+vocabulary. We use ∆(V ) to denote the probability simplex over V.
+In generation, we are interested in computing the probability of a potentially multi-token target
+y = [y1, y2, . . . ,yn] ∈ Vn. For example, y could be a two-digit number or the biography of a
+person. A language model factors the probability of a sequence y into the product of probabilities
+2

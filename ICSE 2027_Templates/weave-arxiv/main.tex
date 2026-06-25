@@ -330,7 +330,7 @@ never sees.
 A world model learns an environment's transition function~\cite{cwm}.
 Applied to programs, execution-trace models train on (state, action,
 next-state) tuples from an interpreter~\cite{cwm,exectuning,codeexec}.
-Meta's CWM showed this grounding improves code reasoning using state
+Meta's CWM showed this grounding improves code reasoning on benchmarks like CRUXEval~\cite{gu2024cruxeval} using state
 snapshots after every line of sequential Python~\cite{cwm}.
 A follow-up identified failure modes at long-horizon token exhaustion
 and string-valued tokenization boundaries, both specific to
@@ -347,7 +347,7 @@ has multiple valid continuations and the nondeterminism itself carries
 information about program behaviour.}
 
 \paragraph{LLMs for concurrent code.}
-The CONCUR benchmark evaluates LLMs on generating correct concurrent code, judged by model checking~\cite{concur}. Jain and Purandare show that strong LLMs can identify races and deadlocks under sequential consistency but fail to reason about relaxed memory ordering~\cite{jainpurandare}. Our setting is complementary to both: rather than generating concurrent programs or verifying them directly, we model their execution as a learned transition function. We train a model on Go's execution trace events, which are emitted under Go's sequentially consistent memory model but are nondeterministic at the scheduler level. We use scheduling nondeterminism as a distributional training target.
+The CONCUR benchmark evaluates LLMs on generating correct concurrent code, judged by model checking~\cite{concur}. Jain and Purandare show that strong LLMs can identify races and deadlocks under sequential consistency but fail to reason about relaxed memory ordering~\cite{jainpurandare}. Our setting is complementary to both: rather than generating concurrent programs or verifying them directly, we model their execution as a learned transition function. We train a model on Go's execution trace events, which are emitted under Go's sequentially consistent memory model but are nondeterministic at the scheduler level. We use scheduling nondeterminism as a distributional training target. Recent tools like ChatDBG~\cite{davis2024chatdbg} augment interactive debugging with LLMs by executing commands and analyzing state, but are designed for sequential debugging workflows.
 
 \paragraph{Go concurrency bugs and analysis tools.}
 Go concurrency bugs — deadlocks, races, and goroutine leaks — arise in practice even in production systems maintained by experts~\cite{goker}. Our held-out test set uses GoKer kernels from the GoBench suite~\cite{gobench}, which provides minimal reproducers of real concurrency bugs from production Go systems, each verified to exhibit the documented bug behavior. Static analysis tools like GCatch~\cite{gcatch} find blocking concurrency bugs in Go by modeling channel constraints symbolically. Dynamic analysis tools like GFuzz~\cite{gfuzz} and GoPie~\cite{gopie} explore scheduling diversity through increasingly sophisticated strategies to exploit the multiple valid execution orders of concurrent programs to find bugs. These tools treat nondeterminism as a search space to prove the absence or presence of bugs; our approach is complementary: we treat the set of valid orderings as a distributional signal for training an empirical execution model that can express uncertainty about which scheduler events are reachable.
@@ -356,7 +356,7 @@ Go concurrency bugs — deadlocks, races, and goroutine leaks — arise in pract
 The idea that soft distributional targets carry more information than hard labels originates in knowledge distillation~\cite{hinton}. Instruction-tuned models are biased toward overconfident, peaked distributions even when the correct answer is a uniform distribution over options~\cite{diffuse}. We measure this using Expected Calibration Error (ECE), the standard metric for the gap between a model's predicted confidence and its empirical accuracy~\cite{guocalib}. Calibration of LLMs for code tasks is an underexplored problem: Spiess et al. show that even well-performing code models are often poorly calibrated in terms of their confidence matching correctness likelihood~\cite{spiess}. Concurrent work shows probabilistic calibration is a learnable capability in LLMs through soft-target fine-tuning~\cite{probcalib}. Our KL objective directly counteracts overconfidence by soft-target fine-tuning against empirical next-event distributions from repeated concurrent program runs, where the distributional targets are not provided by a teacher model but derived from the nondeterminism of the program itself.
 
 \paragraph{Formal concurrent verification.}
-Classical formal methods address concurrent complexity through exhaustive state-space search. Godefroid pioneered partial-order methods~\cite{godefroid1996} to alleviate the state-explosion problem by exploiting transition independence, grouping execution sequences into equivalence classes. Similarly, compositional techniques like thread-modular verification~\cite{flanagan2002} use assume-guarantee reasoning to verify individual threads in isolation, bypassing exhaustive interleaving exploration. In contrast to these symbolic and exhaustive techniques, our work takes a probabilistic approach: rather than proving safety properties or exploring all interleavings, we train an LLM to serve as a learned transition model, predicting the relative likelihood of scheduler events directly from execution traces.
+Classical formal methods address concurrent complexity through exhaustive state-space search. Godefroid pioneered partial-order methods~\cite{godefroid1996}, which were later extended to dynamic partial-order reduction (DPOR)~\cite{flanagan2005dynamic}, to alleviate the state-explosion problem by exploiting transition independence, grouping execution sequences into equivalence classes. Similarly, compositional techniques like thread-modular verification~\cite{flanagan2002} use assume-guarantee reasoning to verify individual threads in isolation, bypassing exhaustive interleaving exploration. In contrast to these symbolic and exhaustive techniques, our work takes a probabilistic approach: rather than proving safety properties or exploring all interleavings, we train an LLM to serve as a learned transition model, predicting the relative likelihood of scheduler events directly from execution traces.
 
 Table~\ref{tab:position} positions this work against the two closest lines of prior research.
 
@@ -607,7 +607,7 @@ types is unambiguous.
 
 \subsection{Cross-Entropy Baseline}\label{sec:ce}
 
-We fine-tune Qwen2.5-Coder-7B-Instruct~\cite{qwen} with 4-bit
+We fine-tune Qwen2.5-Coder-7B-Instruct~\cite{qwen} (selected over alternatives like StarCoder~\cite{li2023starcoder}, Code Llama~\cite{roziere2023codellama}, and DeepSeek-Coder~\cite{guo2024deepseekcoder} due to its superior performance-to-size ratio on Go code) with 4-bit
 QLoRA~\cite{qlora,lora} using cross-entropy over response tokens.
 To approximate the empirical distribution, training examples are
 duplicated proportionally to observed next-event frequency across the

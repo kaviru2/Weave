@@ -1,0 +1,166 @@
+=== FILE: 19_qwen.pdf ===
+
+--- PAGE 1 ---
+Technical Report
+Qwen2.5-Coder Technical Report
+Binyuan Hui* Jian Yang* Zeyu Cui* Jiaxi Yang*
+Dayiheng Liu Lei Zhang Tianyu Liu Jiajun Zhang Bowen Yu Keming Lu
+Kai Dang Yang Fan Yichang Zhang An Yang Rui Men Fei Huang
+Bo Zheng Yibo Miao Shanghaoran Quan Yunlong Feng
+Xingzhang Ren Xuancheng Ren Jingren Zhou Junyang Lin †
+Qwen Team Alibaba Group
+https://hf.co/Qwen/Qwen2.5-Coder-32B-Instruct
+https://github.com/QwenLM/Qwen2.5-Coder
+Abstract
+In this report, we introduce the Qwen2.5-Coder series, a significant up-
+grade from its predecessor, CodeQwen1.5. This series includes six models:
+Qwen2.5-Coder-(0.5B/1.5B/3B/7B/14B/32B). As a code-specific model,
+Qwen2.5-Coder is built upon the Qwen2.5 architecture and continues pre-
+trained on a vast corpus of over 5.5 trillion tokens. Through meticulous
+data cleaning, scalable synthetic data generation, and balanced data mix-
+ing, Qwen2.5-Coder demonstrates impressive code generation capabilities
+while retaining general and math skills. These models have been evaluated
+on a wide range of code-related tasks, achieving state-of-the-art (SOTA)
+performance across more than 10 benchmarks, including code generation,
+completion, reasoning, and repair, consistently outperforming larger mod-
+els of the same model size. We believe that the release of the Qwen2.5-Coder
+series will advance research in code intelligence and, with its permissive
+licensing, support wider adoption by developers in real-world applications.
+92.7
+88.4
+79.3
+78.1
+90.2
+89.2
+81.2
+73.3
+31.4
+27.9
+22.6
+21.3
+65.9
+62.9
+54.3 50.5
+38.3
+36.3
+29.8 29.4
+73.7
+72.9
+59.4
+51.1
+83.4
+75.1
+63.5
+50.6
+58.4
+51.9
+46.2
+45.6
+86.3
+83.8
+74.973.5
+68.9
+57.4
+21.7
+16.8
+92.1
+86.8
+34.6
+65.8
+37.6
+71.4
+89.2
+54.2
+84.4
+69.1
+..lavEna
+mu
+H.....
+P
+P
+B
+M
+L
+iv
+e
+C
+o
+d
+e
+B
+e
+n
+c
+h.
+......M
+c
+E
+v
+al
+BigCodeBench......Aider
+C
+R
+U
+X
+E
+v
+a
+l-O
+...B
+I
+R
+D
+-S
+Q
+L
+....s
+ul
+Pl
+a
+v
+E
+..anerAedoC
+Qwen2.5-Coder-32B-Instruct
+DeepSeek-Coder-V2-Instruct
+DeepSeek-Coder-33B-Instruct
+CodeStral-22B
+GPT-4o-20240806
+1
+Qwen2.5-Coder-32B
+∗Equal core contribution, †Corresponding author
+1
+arXiv:2409.12186v3  [cs.CL]  12 Nov 2024
+
+--- PAGE 2 ---
+Technical Report
+Contents
+1 Introduction 3
+2 Model Architecture 3
+3 Pre-training 4
+3.1 Pretraining Data . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 4
+3.1.1 Data Composition . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 5
+3.1.2 Data Mixture . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 6
+3.2 Training Policy . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 6
+3.2.1 File-Level Pretraining . . . . . . . . . . . . . . . . . . . . . . . . . . . 6
+3.2.2 Repo-Level Pretraining . . . . . . . . . . . . . . . . . . . . . . . . . . 7
+4 Post-training 7
+4.1 A Recipe for Instruction Data . . . . . . . . . . . . . . . . . . . . . . . . . . . 7
+4.2 Training Policy . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 9
+5 Decontamination 9
+6 Evaluation on Base Models 10
+6.1 Code Generation . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 10
+6.2 Code Completion . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 11
+6.3 Code Reasoning . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 14
+6.4 Math Reasoning . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 15
+6.5 General Natural Language . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 15
+6.6 Long-Context Evaluation . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 16
+7 Evaluation on Instruct Models 16
+7.1 Code Generation . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 18
+7.2 Code Reasoning . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 22
+7.3 Code Editing . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 23
+7.4 Text-to-SQL . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 25
+7.5 Math Reasoning and General Natural Language . . . . . . . . . . . . . . . . 27
+7.6 Table Understanding . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 27
+8 Discussion: Scaling is All You Need 28
+9 Conclusion 28
+2

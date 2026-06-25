@@ -1,0 +1,104 @@
+=== FILE: 15_probcalib.pdf ===
+
+--- PAGE 1 ---
+Probabilistic Calibration Is a Trainable Capability in
+Language Models
+Davide Baldelli1,2,3,4,∗ Sruthi Kuriakose6 Maryam Hashemzadeh1,2,5
+Amal Zouaq2,3,4 Sarath Chandar1,2,4
+1Chandar Research Lab 2Mila – Quebec AI Institute 3LAMA-WeST Lab
+4Polytechnique Montréal 5Université de Montréal 6Independent researcher
+Abstract
+Language models are increasingly used in settings where outputs must satisfy
+user-specified randomness constraints, yet their generation probabilities are often
+poorly calibrated to those targets. We study whether this capability can be improved
+directly through fine-tuning. Concretely, we fine-tune language models on synthetic
+prompts that require sampling from mathematical distributions, and compare two
+Calibration Fine-Tuning variants: a soft-target method that converts the desired
+output distribution into trie-derived next-token targets, and a hard-target method that
+trains on sampled completions from the same target distribution. Across 12 models
+spanning four families, both methods substantially improve structured-sampling
+fidelity on held-out distribution families and unseen parameter settings, showing
+that probabilistic calibration is a trainable capability. Under our selected training
+configurations, the two methods exhibit different empirical profiles: hard-target
+fine-tuning is often strongest on structured numeric sampling, while soft-target
+fine-tuning performs better on broader stochastic generation benchmarks, including
+open-ended random generation, multiple-choice answer-position balancing, and
+NoveltyBench. The gains sometimes reduce downstream capability, especially
+arithmetic reasoning, with costs varying by model. Overall, our results show that
+probabilistic calibration can be improved through fine-tuning, with our hard-target
+configuration favoring exact numeric fidelity and our soft-target configuration
+favoring broader stochastic transfer. Code is available at https://github.com/
+chandar-lab/calibration-finetuning.
+1 Introduction
+Language models are increasingly used as general-purpose interfaces for generation and decision-
+making [Chatterji et al., 2025]. In many such uses, producing a valid answer is not enough: when the
+request involves randomness, diversity, or balanced choice, the model should place probability mass
+according to the intended stochastic behavior. In these settings, both the set of attainable outputs
+and the allocation of probability mass across them matter. In formal spaces, calibrated sampling
+is a standard primitive: one calls routines like np.random.normal(...) to obtain draws from a
+specified distribution. There is no equally reliable primitive for language space. In practice, language
+models are the natural candidate interface for requests such as "tell me a random city" or "tell me a
+random number from 1 to 10," but their induced output distributions are poorly controlled.
+Current pretraining and post-training objectives do not incentivize calibrated output probabilities:
+the former optimizes next-token prediction on observed text, and the latter rewards task success,
+compliance or preferred responses. Unsurprisingly, language models collapse onto narrow output
+subsets, violate simple support constraints, and induce distributions that are far from the requested
+target [Renda et al., 2023, Zhao et al., 2026, Gu et al., 2026]. Prompting workarounds can help but
+add inference-time cost and prompt sensitivity [Misaki and Akiba, 2025, Xiao et al., 2025b].
+∗Corresponding author:davide.baldelli@mila.quebec.
+arXiv:2605.11845v1  [cs.CL]  12 May 2026
+
+--- PAGE 2 ---
+This raises a more specific question: can fine-tuning make language models better calibrated proba-
+bilistic samplers, so that their samples reflect the intended randomness of the request? In this work,
+we study a simple setting in which this intended randomness is specified exactly by a known target
+distribution. We train language models on synthetic prompts that require sampling from mathematical
+distributions, and compare two Calibration Fine-Tuning strategies for teaching this behavior. The first
+issoft-targetfine-tuning: we enumerate the valid numeric outputs for a prompt, assign each output its
+target probability, and convert this distribution over full answers into supervised probabilities for the
+next token at each prefix. The second ishard-targetfine-tuning: we draw many numeric answers
+from the target distribution and train on them with standard next-token cross-entropy.
+Our main finding is that probabilistic calibration is a trainable capability. Across 12 models, both
+soft-target and hard-target fine-tuning substantially improve structured-sampling fidelity on held-out
+distribution families and unseen parameter settings. The two methods, however, exhibit different
+empirical profiles. With the final configurations selected by our ablations, hard-target fine-tuning is
+often strongest on structured numeric sampling itself, while soft-target fine-tuning performs better on
+broader stochastic generation settings and more often yields favorable perplexity diagnostics.
+In summary, we make the following contributions:
+• We study probabilistic calibration as a trainable capability of language models, framing the
+problem as learning both the valid output space and the probability mass assigned across it.
+• We introduce and compare two fine-tuning strategies for this setting: a soft-target method
+based on trie-induced next-token supervision, and a hard-target method based on repeated
+sampled completions from the same target distribution.
+• Across 12 models, we show that both methods substantially improve structured-sampling
+fidelity on held-out families and unseen parameter settings, with hard-target fine-tuning
+often strongest on the in-domain numeric benchmark.
+• We show that these gains transfer beyond the synthetic training domain, with our soft-target
+configuration often performing better on broader stochastic generation benchmarks such
+as open-ended random generation, MCQ answer-position balance [Zhao et al., 2026], and
+NoveltyBench [Zhang et al., 2025], while retention and perplexity results reveal model-
+dependent tradeoffs under the selected training budgets.
+2 Related Work
+Language models as poor native samplers, and prompting workarounds.A growing line of
+work shows that standard autoregressive language models are weak stochastic generators. Early
+controlled evaluations found large deviations from target distributions even in simple synthetic
+settings [Renda et al., 2023], and later work showed that these failures persist and often worsen under
+more demanding independent single-sample prompting protocols [Zhao et al., 2026]. Frontier models
+can often transform provided random seeds into target distributions, yet still fail when asked to sample
+from those distributions directly [Gu et al., 2026]. Related failures appear beyond textbook numeric
+settings, including password generation [Karanjai et al., 2025] and game-theoretic decision-making
+[Guo et al., 2025]. Prompting-based interventions can partly improve stochastic behavior by injecting
+extra reasoning or synthetic entropy [Misaki and Akiba, 2025, Xiao et al., 2025b], but they do so at
+inference time and introduce additional prompt sensitivity and computational overhead, whereas our
+focus is on training the model itself to better match a known target distribution.
+Calibration, soft targets, and probability-shaping objectives.We use calibration in a distribu-
+tional sense, meaning alignment of output probabilities with a target statistical distribution rather
+than epistemic uncertainty calibration [Kapoor et al., 2024]. More broadly, our method belongs to
+a family of objectives that shape predictive distributions through soft supervision, distillation, or
+calibration-aware training [Lee et al., 2022, Kim et al., 2025, Liang and Wang, 2026, Pereira et al.,
+2026, Kirk et al., 2023, Xiao et al., 2025a, Parikh et al., 2026, Luo et al., 2025]. Related ideas also
+appear in distributional alignment for LLM-as-a-judge settings [Chen et al., 2025], and closest to our
+setting, Zhang et al. [2024] fine-tune language models with sequence-level targets to produce diffuse
+distributions over valid outputs. We build on this direction by extending distributional fine-tuning
+to a broader family of probability distributions, comparing sampled-completion and trie-derived
+2

@@ -1,0 +1,173 @@
+=== FILE: 04_codeexec.pdf ===
+
+--- PAGE 1 ---
+Code Execution with Pre-trained Language Models
+Chenxiao Liu1∗, Shuai Lu2, Weizhu Chen2, Daxin Jiang2,
+Alexey Svyatkovskiy2, Shengyu Fu2, Neel Sundaresan2, Nan Duan2
+1 Peking University 2 Microsoft
+jadecxliu@gmail.com
+{shuailu, wzchen, djiang}@microsoft.com
+{alsvyatk, shengyfu, neels, nanduan}@microsoft.com
+Abstract
+Code execution is a fundamental aspect of pro-
+gramming language semantics that reﬂects the
+exact behavior of the code. However, most pre-
+trained models for code intelligence ignore the
+execution trace and only rely on source code
+and syntactic structures. In this paper, we
+investigate how well pre-trained models can
+understand and perform code execution. We
+develop a mutation-based data augmentation
+technique to create a large-scale and realis-
+tic Python dataset and task for code execu-
+tion, which challenges existing models such
+as Codex. We then present CodeExecutor, a
+Transformer model that leverages code execu-
+tion pre-training and curriculum learning to en-
+hance its semantic comprehension. We evalu-
+ate CodeExecutor on code execution and show
+its promising performance and limitations. We
+also demonstrate its potential beneﬁts for code
+intelligence tasks such as zero-shot code-to-
+code search and text-to-code generation. Our
+analysis provides insights into the learning and
+generalization abilities of pre-trained models
+for code execution.
+1 Introduction
+Pre-trained models have achieved remarkable re-
+sults in natural language (NL) tasks (Radford et al.,
+2018; Devlin et al., 2019; Raffel et al., 2020), in-
+spiring the development of pre-trained models for
+programming language (PL) tasks (Kanade et al.,
+2020; Feng et al., 2020; Svyatkovskiy et al., 2020;
+Wang et al., 2021b; Guo et al., 2021, 2022). These
+models leverage source code and code structures,
+such as abstract syntax tree (AST) (Wang et al.,
+2021a; Guo et al., 2022) and data ﬂow (Guo et al.,
+2021), to learn code-related tasks. These structures,
+while useful, are not sufﬁcient to represent the dy-
+namic behavior of code during execution, which is
+reﬂected in the execution trace. Using Figure 1 as
+∗Work done during internship at Microsoft. Shuai Lu and
+Nan Duan are corresponding authors.
+an example, the execution trace shows how code be-
+haves during execution, reﬂecting the control ﬂow
+and the state changes of variables. On the other
+hand, as stated by Casalnuovo et al. (2020), source
+code contains two channels of information: natural
+& formal. The natural channel (Hindle et al., 2012),
+such as identiﬁers and comments, enables language
+models to be leveraged to understand code-related
+tasks. The formal channel is used by interpreters
+and compilers to specify execution and has precise
+semantics. The formal channel is unique to code
+and is what makes it executable. Execution trace
+falls into the second category since it reveals the
+formal channel of information that distinguishes
+code from natural language, as well as enabling
+code execution precisely (Casalnuovo et al., 2020;
+Chakraborty et al., 2022).
+In this work, we aim to teach pre-trained models
+the real-world code execution process. We pro-
+pose CodeExecutor, a Transformer-based model
+that learns to execute arbitrary programs and pre-
+dict their execution traces. To support pre-training
+on large-scale data, we construct the Python Co-
+deNetMut dataset by producing mutations based
+on submissions to competitive programming prob-
+lems from CodeNet (Puri et al., 2021), along with
+single-line Python transformations and programs
+adapted from Python ofﬁcial tutorial. We design
+a pre-training task that predicts both the line order
+and the intermediate states of the execution trace,
+and apply curriculum learning to gradually increase
+the difﬁculty of the programs.
+We evaluate CodeExecutor on code execution
+tasks and show that it outperforms existing mod-
+els and demonstrates promising capabilities. We
+also conduct an in-depth analysis of the model’s
+performance and reveal its strengths and weak-
+nesses. Furthermore, we show that CodeExecutor
+can improve downstream tasks like zero-shot code-
+to-code search and text-to-code generation, indicat-
+ing the potential of leveraging execution trace to
+arXiv:2305.05383v1  [cs.PL]  8 May 2023
+
+--- PAGE 2 ---
+h = 3 w = 7n = 10for iin range(min(h, w)): n = n -max(h, w)      if n <= 0: print(i+ 1) break
+<line> 1<state> h : 3 <line> 2<state> h : 3 ; w : 7<line> 3<state> h : 3 ; w : 7 ; n : 10<line> 4<state> h : 3 ; w : 7 ; n : 10 ; i: 0<line> 5<state> h : 3 ; w : 7 ; n : 3 ; i: 0<line> 6<state> h : 3 ; w : 7 ; n : 3 ; i: 0<line> 4<state> h : 3 ; w : 7 ; n : 3 ; i: 1<line> 5<state> h : 3 ; w : 7 ; n : -4 ; i: 1<line>6<state> h : 3 ; w : 7 ; n : -4 ; i: 1<output> 2 <line> 7<state> h : 3 ; w : 7 ; n : -4 ; i: 1<line> 8<state> h : 3 ; w : 7 ; n : -4 ; i: 1
+12345678(a)SourceCode (b)ExecutionTrace
+Figure 1: Sample source code and its execution trace in the code execution task.
+enhance code intelligence. Our models and datasets
+are publicly available1. In summary, the contribu-
+tions of this paper are:
+• We present the ﬁrst attempt at building a large-
+scale pre-training dataset for real-world code
+execution using a mutation-based data aug-
+mentation approach.
+• We propose a novel pre-trained model named
+CodeExecutor that learns to predict the execu-
+tion traces using a code execution pre-training
+task and curriculum learning.
+• We conduct a comprehensive evaluation of
+CodeExecutor for code execution tasks, pro-
+viding a detailed understanding of the model’s
+performance.
+• CodeExecutor signiﬁcantly improves code in-
+telligence tasks like zero-shot code-to-code
+search and text-to-code generation.
+2 Related Work
+2.1 Learning to Execute
+Previous works form the learning to execute task
+as a problem that reads a program and com-
+putes the program’s output. These works lever-
+age architectures such as recurrent neural networks
+(Zaremba and Sutskever, 2014), graph neural net-
+works (Bieber et al., 2020; Wang et al., 2020) and
+Transformers (Dehghani et al., 2019; Yan et al.,
+2020; Austin et al., 2021; Nye et al., 2021). An-
+other related task algorithm induction is to read a
+short program, such as integer addition or polyno-
+mial evaluation, and computes the output. Algo-
+rithm induction task (Graves et al., 2014; Kurach
+et al., 2016; Kaiser and Sutskever, 2016; Graves
+1https://github.com/microsoft/CodeBERT/tree/
+master/CodeExecutor
+et al., 2016; Reed and de Freitas, 2016; Dehghani
+et al., 2019; Velickovic et al., 2020a,b; Nye et al.,
+2021) targets a particular algorithm with direct
+algorithm-speciﬁc supervision compared with arbi-
+trary programs in our code execution task.
+Some emerging works also employ pre-trained
+models to tackle the two tasks. Lu et al. (2022)
+ﬁne-tunes a small fraction of the weights in GPT-
+2 (Radford et al., 2019) on non-language tasks,
+including simple algorithm induction tasks like Bit
+XOR. Austin et al. (2021) evaluates models pre-
+trained on web documents and dialog data ranging
+in size from 2 million to 137 billion parameters and
+shows that largest models are generally unable to
+predict the output of a program, whether few-shot
+or ﬁne-tuning. Nye et al. (2021) uses a "scratchpad"
+to store intermediate computation steps to perform
+multi-step computations, improving the ability of
+models in Austin et al. (2021).
+Different from previous works that predict pro-
+gram’s output and mainly deal with speciﬁc algo-
+rithms, we predict the program’s whole execution
+trace and focus on imitating the real-world arbi-
+trary program execution behavior. Besides, by us-
+ing execution to capture code semantics, our work
+is beneﬁcial for tasks related to code intelligence.
+2.2 Mathematical Problem Solving
+Mathematical problem solving is a related domain
+of code execution. Recent works show the ability
+of language models to solve math problems, which
+requires learning to execute a soft algorithm to ar-
+rive at a deterministic answer. Amini et al. (2019);
+Ling et al. (2017) map math problems to opera-
+tion programs and focus on sequence-to-program
+generation. Saxton et al. (2019) introduce the Deep-
+Mind Mathematics dataset, which contains plug-
+and-chug problems such as addition, list sorting,
+and function evaluation. Henighan et al. (2020)

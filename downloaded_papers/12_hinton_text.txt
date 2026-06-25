@@ -1,0 +1,113 @@
+=== FILE: 12_hinton.pdf ===
+
+--- PAGE 1 ---
+arXiv:1503.02531v1  [stat.ML]  9 Mar 2015
+Distilling the Knowledge in a Neural Network
+Geoffrey Hinton∗ †
+Google Inc.
+Mountain View
+geoffhinton@google.com
+Oriol Vinyals†
+Google Inc.
+Mountain View
+vinyals@google.com
+Jeff Dean
+Google Inc.
+Mountain View
+jeff@google.com
+Abstract
+A very simple way to improve the performance of almost any mac hine learning
+algorithm is to train many different models on the same data a nd then to average
+their predictions [3]. Unfortunately, making predictions using a whole ensemble
+of models is cumbersome and may be too computationally expensive to allow de-
+ployment to a large number of users, especially if the individual models are large
+neural nets. Caruana and his collaborators [1] have shown th at it is possible to
+compress the knowledge in an ensemble into a single model whi ch is much eas-
+ier to deploy and we develop this approach further using a dif ferent compression
+technique. We achieve some surprising results on MNIST and w e show that we
+can signiﬁcantly improve the acoustic model of a heavily used commercial system
+by distilling the knowledge in an ensemble of models into a single model. We also
+introduce a new type of ensemble composed of one or more full models and many
+specialist models which learn to distinguish ﬁne-grained classes that the full mod-
+els confuse. Unlike a mixture of experts, these specialist m odels can be trained
+rapidly and in parallel.
+1 Introduction
+Many insects have a larval form that is optimized for extracting energy and nutrients from the envi-
+ronment and a completely different adult form that is optimi zed for the very different requirements
+of traveling and reproduction. In large-scale machine learning, we typically use very similar models
+for the training stage and the deployment stage despite thei r very different requirements: For tasks
+like speech and object recognition, training must extract structure from very large, highly redundant
+datasets but it does not need to operate in real time and it can use a huge amount of computation.
+Deployment to a large number of users, however, has much more stringent requirements on latency
+and computational resources. The analogy with insects sugg ests that we should be willing to train
+very cumbersome models if that makes it easier to extract structure from the data. The cumbersome
+model could be an ensemble of separately trained models or a s ingle very large model trained with
+a very strong regularizer such as dropout [9]. Once the cumbe rsome model has been trained, we
+can then use a different kind of training, which we call “distillation” to transfer the knowledge from
+the cumbersome model to a small model that is more suitable fo r deployment. A version of this
+strategy has already been pioneered by Rich Caruana and his c ollaborators [1]. In their important
+paper they demonstrate convincingly that the knowledge acq uired by a large ensemble of models
+can be transferred to a single small model.
+A conceptual block that may have prevented more investigation of this very promising approach is
+that we tend to identify the knowledge in a trained model withthe learned parameter values and this
+makes it hard to see how we can change the form of the model but keep the same knowledge. A more
+abstract view of the knowledge, that frees it from any partic ular instantiation, is that it is a learned
+∗ Also afﬁliated with the University of Toronto and the Canadian Institute for Advanced Research.
+†Equal contribution.
+1
+
+--- PAGE 2 ---
+mapping from input vectors to output vectors. For cumbersom e models that learn to discriminate
+between a large number of classes, the normal training objec tive is to maximize the average log
+probability of the correct answer, but a side-effect of the l earning is that the trained model assigns
+probabilities to all of the incorrect answers and even when t hese probabilities are very small, some
+of them are much larger than others. The relative probabilities of incorrect answers tell us a lot about
+how the cumbersome model tends to generalize. An image of a BM W, for example, may only have
+a very small chance of being mistaken for a garbage truck, but that mistake is still many times more
+probable than mistaking it for a carrot.
+It is generally accepted that the objective function used for training should reﬂect the true objective
+of the user as closely as possible. Despite this, models are u sually trained to optimize performance
+on the training data when the real objective is to generalize well to new data. It would clearly
+be better to train models to generalize well, but this requir es information about the correct way to
+generalize and this information is not normally available. When we are distilling the knowledge
+from a large model into a small one, however, we can train the small model to generalize in the same
+way as the large model. If the cumbersome model generalizes w ell because, for example, it is the
+average of a large ensemble of different models, a small model trained to generalize in the same way
+will typically do much better on test data than a small model that is trained in the normal way on the
+same training set as was used to train the ensemble.
+An obvious way to transfer the generalization ability of the cumbersome model to a small model is
+to use the class probabilities produced by the cumbersome mo del as “soft targets” for training the
+small model. For this transfer stage, we could use the same tr aining set or a separate “transfer” set.
+When the cumbersome model is a large ensemble of simpler mode ls, we can use an arithmetic or
+geometric mean of their individual predictive distributions as the soft targets. When the soft targets
+have high entropy, they provide much more information per training case than hard targets and much
+less variance in the gradient between training cases, so thesmall model can often be trained on much
+less data than the original cumbersome model and using a much higher learning rate.
+For tasks like MNIST in which the cumbersome model almost alw ays produces the correct answer
+with very high conﬁdence, much of the information about the l earned function resides in the ratios
+of very small probabilities in the soft targets. For example , one version of a 2 may be given a
+probability of 10−6 of being a 3 and 10−9 of being a 7 whereas for another version it may be the
+other way around. This is valuable information that deﬁnes a rich similarity structure over the data
+(i. e. it says which 2’s look like 3’s and which look like 7’s) but it has very little inﬂuence on the
+cross-entropy cost function during the transfer stage beca use the probabilities are so close to zero.
+Caruana and his collaborators circumvent this problem by us ing the logits (the inputs to the ﬁnal
+softmax) rather than the probabilities produced by the soft max as the targets for learning the small
+model and they minimize the squared difference between the l ogits produced by the cumbersome
+model and the logits produced by the small model. Our more gen eral solution, called “distillation”,
+is to raise the temperature of the ﬁnal softmax until the cumbersome model produces a suitably soft
+set of targets. We then use the same high temperature when training the small model to match these
+soft targets. We show later that matching the logits of the cu mbersome model is actually a special
+case of distillation.
+The transfer set that is used to train the small model could co nsist entirely of unlabeled data [1]
+or we could use the original training set. We have found that u sing the original training set works
+well, especially if we add a small term to the objective funct ion that encourages the small model
+to predict the true targets as well as matching the soft targe ts provided by the cumbersome model.
+Typically, the small model cannot exactly match the soft tar gets and erring in the direction of the
+correct answer turns out to be helpful.
+2 Distillation
+Neural networks typically produce class probabilities by using a “softmax” output layer that converts
+the logit, zi, computed for each class into a probability, qi, by comparing zi with the other logits.
+qi = exp(zi/T )
+∑
+j exp(zj/T ) (1)
+2

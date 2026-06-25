@@ -1,0 +1,102 @@
+=== FILE: 05_concur.pdf ===
+
+--- PAGE 1 ---
+CONCUR: BENCHMARKINGLLMS FORCONCURRENTCODE
+GENERATION
+Jue Huang
+The University of Queensland
+jue.huang@uq.edu.au
+Tarek Mahmud
+Texas A&M University - Kingsville
+tarek.mahmud@tamuk.edu
+Corina Pasareanu
+Carnegie Mellon University
+pcorina@andrew.cmu.edu
+Guowei Yang
+The University of Queensland
+guowei.yang@uq.edu.au
+March 5, 2026
+ABSTRACT
+Leveraging Large Language Models (LLMs) for code generation has increasingly emerged as a
+common practice in the domain of software engineering. Relevant benchmarks have been estab-
+lished to evaluate the code generation capabilities of LLMs. However, existing benchmarks focus
+primarily on sequential code, lacking the ability to effectively evaluate LLMs on concurrent code
+generation. Compared to sequential code, concurrent code exhibits greater complexity and possesses
+unique types of bugs, such as deadlocks and race conditions, that do not occur in sequential code.
+Therefore, a benchmark for evaluating sequential code generation cannot be useful for evaluating
+concurrent code generation with LLMs. To address this gap, we designed a benchmark CONCUR
+specifically aimed at evaluating the capability of LLMs to generate concurrent code. CONCUR
+consists of a base set of 43 concurrency problems derived from a standard concurrency textbook,
+together with 72 validated mutant variants, resulting in 115 total problems. The base problems serve
+as the semantic core of the benchmark, while the mutants expand linguistic and structural diversity.
+We conducted an evaluation of a range of LLMs on CONCUR, highlighting limitations of current
+models.
+Overall, our work provides a novel direction for evaluating the capability of LLMs to generate code
+with focus on concurrency.
+KeywordsLarge language models, code generation, prompt engineering, concurrency bugs, code generation
+evaluation
+1 Introduction
+LLMs have demonstrated significant success across software engineering tasks, with code generation being one of
+their most common applications. This growing influence has spurred the creation of benchmarks to systematically
+evaluate model performance on program synthesis. Although existing benchmarks [8, 3, 40] evaluate LLMs’ code
+generation capabilities and propose corresponding metrics and datasets, these benchmarks are primarily limited to
+sequential code.
+Concurrency plays a crucial role in the software industry [18]. The development of concurrent programs is known
+to present numerous challenges [6]. Unlike sequential code, concurrent programming is more complex due to the
+interleaved execution of tasks or threads [41]. Concurrent code introduces a host of unique challenges, including
+nondeterministic thread scheduling, synchronization requirements, and subtle correctness issues such as race condi-
+tions, deadlocks, and starvation. These concurrency-specific bugs are notoriously difficult to anticipate, diagnose,
+and resolve, even for experienced developers. As a result, evaluating LLMs only on sequential code leaves a critical
+arXiv:2603.03683v1  [cs.SE]  4 Mar 2026
+
+--- PAGE 2 ---
+APREPRINT- MARCH5, 2026
+blind spot in understanding their true capabilities and limitations. This prevents many code generation benchmarks
+from reliably assessing the capability of LLMs to generate concurrent programs. Static similarity metrics, such as
+CodeBLEU [30], capture surface-level overlap and often overlook semantic correctness, while unit-test-based dy-
+namic evaluation cannot systematically explore nondeterministic thread schedules. Therefore, these approaches may
+incorrectly classify flawed concurrent programs as correct.
+To address this gap, we propose CONCUR, the first benchmark dedicated to evaluating LLMs on concurrent code
+generation. CONCUR is built around a base set of 43 carefully curated concurrency problems derived from a standard
+concurrency textbook [14]. These base problems form the semantic core of the benchmark. To improve coverage and
+reduce the risk of memorization, we further construct 72 validated mutant variants of a subset of the base problems,
+resulting in 115 total problem instances used for evaluation. Unless otherwise stated, all experimental results are
+reported on the full set of 115 problems; we additionally report base-only results as a sanity check to ensure that
+our conclusions do not depend on the mutant variants. Beyond dataset design, CONCUR leverages formal methods
+techniques, namely model checking, to rigorously evaluate the correctness of the generated code.
+We evaluate 23 state-of-the-art LLMs on CONCUR, including both proprietary APIs and open-source models. Our
+framework effectively detects concurrency bugs in LLM-generated programs, achieving 92% precision in manual
+validation. Furthermore, our analysis reveals that the widely used code evaluation metric, CodeBLEU, fails to reliably
+reflect correctness of concurrent programs.
+The key contributions of our paper are as follows.
+• We present a benchmark CONCUR for evaluating the capability of LLMs in concurrent code generation. It
+consists of 115 concurrency problems paired with structured prompts and validated ground-truth implemen-
+tations in Java.
+• CONCUR also introduces an automated validation framework using formal methods techniques, namely
+model checking.
+Unlike existing benchmarks that rely on test cases to assess the correctness of code,
+CONCUR uses model checking to exhaustively explore the entire state space (within a user-defined bound)
+of the target concurrent program and verify its correctness.
+• We evaluate the capability of 23 LLMs in generating concurrent programs and analyze the potential issues
+inherent in the concurrent programs produced by these LLMs. The results indicate that our benchmark can
+effectively identify weaknesses in current LLMs when producing concurrent code.
+• We have made our dataset and associated tools publicly available athttps://anonymous.4open.
+science/r/CONCUR-9DD4. We also maintain a public leaderboard athttps://concur-bench.github.
+io/concurbench.github.io/leaderboard.html, where we will continue to add new LLMs and expand
+the benchmark with additional concurrency problems.
+2 Benchmark
+To systematically evaluate LLMs on concurrent code generation, we introduce CONCUR, a benchmark that integrates
+a curated dataset of concurrency problems with a rigorous evaluation framework. The dataset consists of 115 concur-
+rency problems, each paired with structured prompts and validated ground-truth implementations. Building on this
+foundation, the evaluation framework combines compilation through Java 8 compiler with model checking using Java
+Pathfinder (JPF) [15].
+2.1 Dataset
+To evaluate the ability of LLMs to generate concurrent programs, we constructed a dataset of concurrency problems
+paired with carefully designed prompts and ground-truth implementations. The dataset is designed to ensure that
+generated outputs can be evaluated consistently and reliably through compilation and model checking.
+2.1.1 Problem selection
+Two authors systematically reviewed the reference book [14] and selected concurrency problems to form the basis of
+the benchmark. Problems that required third-party library packages or could not be validated through back-end output,
+such as tasks involving database operations or user interface interactions, were excluded. For problems involving a
+large number of objects, the descriptions were adjusted to reduce object counts. This ensured that LLMs would not
+2

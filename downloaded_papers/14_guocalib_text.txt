@@ -1,0 +1,223 @@
+=== FILE: 14_guocalib.pdf ===
+
+--- PAGE 1 ---
+On Calibration of Modern Neural Networks
+Chuan Guo * 1 Geoff Pleiss * 1 Yu Sun* 1 Kilian Q. Weinberger1
+Abstract
+Conﬁdence calibration – the problem of predict-
+ing probability estimates representative of the
+true correctness likelihood – is important for
+classiﬁcation models in many applications. We
+discover that modern neural networks, unlike
+those from a decade ago, are poorly calibrated.
+Through extensive experiments, we observe that
+depth, width, weight decay, and Batch Normal-
+ization are important factors inﬂuencing calibra-
+tion. We evaluate the performance of various
+post-processing calibration methods on state-of-
+the-art architectures with image and document
+classiﬁcation datasets. Our analysis and exper-
+iments not only offer insights into neural net-
+work learning, but also provide a simple and
+straightforward recipe for practical settings: on
+most datasets, temperature scaling – a single-
+parameter variant of Platt Scaling – is surpris-
+ingly effective at calibrating predictions.
+1. Introduction
+Recent advances in deep learning have dramatically im-
+proved neural network accuracy (Simonyan & Zisserman,
+2015; Srivastava et al., 2015; He et al., 2016; Huang et al.,
+2016; 2017). As a result, neural networks are now entrusted
+with making complex decisions in applications, such as ob-
+ject detection (Girshick, 2015), speech recognition (Han-
+nun et al., 2014), and medical diagnosis (Caruana et al.,
+2015). In these settings, neural networks are an essential
+component of larger decision making pipelines.
+In real-world decision making systems, classiﬁcation net-
+works must not only be accurate, but also should indicate
+when they are likely to be incorrect. As an example, con-
+sider a self-driving car that uses a neural network to detect
+pedestrians and other obstructions (Bojarski et al., 2016).
+*Equal contribution, alphabetical order. 1Cornell University.
+Correspondence to: Chuan Guo <cg563@cornell.edu>, Geoff
+Pleiss <geoff@cs.cornell.edu>, Yu Sun <ys646@cornell.edu>.
+Proceedings of the 34 th International Conference on Machine
+Learning, Sydney, Australia, PMLR 70, 2017. Copyright 2017
+by the author(s).
+0.0 0.2 0.4 0.6 0.8 1.0
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+% of Samples
+Avg. conﬁdence
+Accuracy
+LeNet (1998)
+CIFAR-100
+0.0 0.2 0.4 0.6 0.8 1.0
+Avg. conﬁdence
+Accuracy
+ResNet (2016)
+CIFAR-100
+0.0 0.2 0.4 0.6 0.8 1.0
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+Accuracy
+Error=44.9
+Outputs
+Gap
+0.0 0.2 0.4 0.6 0.8 1.0
+Error=30.6
+Outputs
+Gap
+Conﬁdence
+Figure 1. Conﬁdence histograms (top) and reliability diagrams
+(bottom) for a 5-layer LeNet (left) and a 110-layer ResNet (right)
+on CIFAR-100. Refer to the text below for detailed illustration.
+If the detection network is not able to conﬁdently predict
+the presence or absence of immediate obstructions, the car
+should rely more on the output of other sensors for braking.
+Alternatively, in automated health care, control should be
+passed on to human doctors when the conﬁdence of a dis-
+ease diagnosis network is low (Jiang et al., 2012). Specif-
+ically, a network should provide a calibrated conﬁdence
+measure in addition to its prediction. In other words, the
+probability associated with the predicted class label should
+reﬂect its ground truth correctness likelihood.
+Calibrated conﬁdence estimates are also important for
+model interpretability. Humans have a natural cognitive in-
+tuition for probabilities (Cosmides & Tooby, 1996). Good
+conﬁdence estimates provide a valuable extra bit of infor-
+mation to establish trustworthiness with the user – espe-
+cially for neural networks, whose classiﬁcation decisions
+are often difﬁcult to interpret. Further, good probability
+estimates can be used to incorporate neural networks into
+other probabilistic models. For example, one can improve
+performance by combining network outputs with a lan-
+
+--- PAGE 2 ---
+guage model in speech recognition (Hannun et al., 2014;
+Xiong et al., 2016), or with camera information for object
+detection (Kendall & Cipolla, 2016).
+In 2005, Niculescu-Mizil & Caruana (2005) showed that
+neural networks typically produce well-calibrated proba-
+bilities on binary classiﬁcation tasks. While neural net-
+works today are undoubtedly more accurate than they were
+a decade ago, we discover with great surprise that mod-
+ern neural networks are no longer well-calibrated . This
+is visualized in Figure 1, which compares a 5-layer LeNet
+(left) (LeCun et al., 1998) with a 110-layer ResNet (right)
+(He et al., 2016) on the CIFAR-100 dataset. The top row
+shows the distribution of prediction conﬁdence (i.e. prob-
+abilities associated with the predicted label) as histograms.
+The average conﬁdence of LeNet closely matches its accu-
+racy, while the average conﬁdence of the ResNet is substan-
+tially higher than its accuracy. This is further illustrated in
+the bottom row reliability diagrams (DeGroot & Fienberg,
+1983; Niculescu-Mizil & Caruana, 2005), which show ac-
+curacy as a function of conﬁdence. We see that LeNet is
+well-calibrated, as conﬁdence closely approximates the ex-
+pected accuracy (i.e. the bars align roughly along the diag-
+onal). On the other hand, the ResNet’s accuracy is better,
+but does not match its conﬁdence.
+Our goal is not only to understand why neural networks
+have become miscalibrated, but also to identify what meth-
+ods can alleviate this problem. In this paper, we demon-
+strate on several computer vision and NLP tasks that neu-
+ral networks produce conﬁdences that cannot represent true
+probabilities. Additionally, we offer insight and intuition
+into network training and architectural trends that may
+cause miscalibration. Finally, we compare various post-
+processing calibration methods on state-of-the-art neural
+networks, and introduce several extensions of our own.
+Surprisingly, we ﬁnd that a single-parameter variant of Platt
+scaling (Platt et al., 1999) – which we refer to as temper-
+ature scaling – is often the most effective method at ob-
+taining calibrated probabilities. Because this method is
+straightforward to implement with existing deep learning
+frameworks, it can be easily adopted in practical settings.
+2. Deﬁnitions
+The problem we address in this paper is supervised multi-
+class classiﬁcation with neural networks. The inputX∈X
+and label Y ∈ Y = {1,...,K } are random variables
+that follow a ground truth joint distribution π(X,Y ) =
+π(Y|X)π(X). Let h be a neural network with h(X) =
+( ˆY, ˆP ), where ˆY is a class prediction and ˆP is its associ-
+ated conﬁdence, i.e. probability of correctness. We would
+like the conﬁdence estimate ˆP to be calibrated, which in-
+tuitively means that ˆP represents a true probability. For
+example, given 100 predictions, each with conﬁdence of
+0.8, we expect that 80 should be correctly classiﬁed. More
+formally, we deﬁne perfect calibration as
+P
+(
+ˆY =Y | ˆP =p
+)
+=p, ∀p∈ [0, 1] (1)
+where the probability is over the joint distribution. In all
+practical settings, achieving perfect calibration is impos-
+sible. Additionally, the probability in (1) cannot be com-
+puted using ﬁnitely many samples since ˆP is a continuous
+random variable. This motivates the need for empirical ap-
+proximations that capture the essence of (1).
+Reliability Diagrams (e.g. Figure 1 bottom) are a visual
+representation of model calibration (DeGroot & Fienberg,
+1983; Niculescu-Mizil & Caruana, 2005). These diagrams
+plot expected sample accuracy as a function of conﬁdence.
+If the model is perfectly calibrated – i.e. if (1) holds – then
+the diagram should plot the identity function. Any devia-
+tion from a perfect diagonal represents miscalibration.
+To estimate the expected accuracy from ﬁnite samples, we
+group predictions intoM interval bins (each of size 1/M)
+and calculate the accuracy of each bin. Let Bm be the set
+of indices of samples whose prediction conﬁdence falls into
+the intervalIm = (m−1
+M , m
+M ]. The accuracy ofBm is
+acc(Bm) = 1
+|Bm|
+∑
+i∈Bm
+1(ˆyi =yi),
+where ˆyi andyi are the predicted and true class labels for
+samplei. Basic probability tells us that acc(Bm) is an un-
+biased and consistent estimator of P( ˆY = Y | ˆP ∈ Im).
+We deﬁne the average conﬁdence within binBm as
+conf(Bm) = 1
+|Bm|
+∑
+i∈Bm
+ˆpi,
+where ˆpi is the conﬁdence for sample i. acc(Bm) and
+conf(Bm) approximate the left-hand and right-hand sides
+of (1) respectively for bin Bm. Therefore, a perfectly cal-
+ibrated model will have acc(Bm) = conf( Bm) for all
+m∈{ 1,...,M }. Note that reliability diagrams do not dis-
+play the proportion of samples in a given bin, and thus can-
+not be used to estimate how many samples are calibrated.
+Expected Calibration Error (ECE). While reliability
+diagrams are useful visual tools, it is more convenient to
+have a scalar summary statistic of calibration. Since statis-
+tics comparing two distributions cannot be comprehensive,
+previous works have proposed variants, each with a unique
+emphasis. One notion of miscalibration is the difference in
+expectation between conﬁdence and accuracy, i.e.
+E
+ˆP
+[⏐⏐⏐P
+(
+ˆY =Y | ˆP =p
+)
+−p
+⏐⏐⏐
+]
+(2)
+Expected Calibration Error (Naeini et al., 2015) – or ECE
+– approximates (2) by partitioning predictions into M
+equally-spaced bins (similar to the reliability diagrams) and
