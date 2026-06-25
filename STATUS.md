@@ -3,6 +3,7 @@
 > Read this first when picking up on a new machine. Then read CLAUDE.md for the full plan.
 
 ### Recent Updates & Changelog
+- **2026-06-25 (Phase 23 training running):** Stratified CE training launched on L4 (24GB) @ 213.173.105.25:10087. Balanced dataset (200 examples/event type, 2,004 train / 1,287 val). Goal: validate Class 1 taxonomy claim — GoSched (0.5% train → 0% acc) and GoEnd (1.5% train → 0% acc) should recover with balanced exposure. Phase 22 branch (`phase-22-dataset-evaluation`) never merged but all its work (37 GoKer programs, eval results) is already in `phase-23-stratified-training` — PR 22 safely skipped. **Next: wait for training (~5hr), run eval (`scripts/runpod_eval_phase23.sh`), add results to paper Discussion, then proofread + submit by Mon 30 Jun AoE.**
 - **2026-06-25 (Phase 22 complete)**: Expanded evaluation to all **103 GoKer programs (1,287 examples)**. Fixed 37 programs with stale `testing` import from GoKer extraction. Phase 21 Qwen3-8B traj adapter on full set: **25.3% overall, 3.6% GoUnblock (2/55)**. Drop from 30.3% (798 ex) reflects harder programs (more GoSched/GoEnd-heavy bugs) not model regression. GoUnblock recovery confirms causal instrumentation generalises to unseen real-world programs. Results at `eval/results/eval_results_phase22.json`. **Next: Phase 23 — stratified training to fix Class 1 distributional gaps (GoSched/GoEnd), validate the three-class taxonomy claim for ICSE.**
 - **2026-06-24 (paper finalized)**: **Research Track paper compiles clean at 11 pages — main text ends on page 10, page 11 references-only (page-limit compliant).** Fixed two matplotlib figure overlaps (Fig 2 stale `p=0.0001` callout + crowded x-labels; Fig 3 annotation behind legend) by editing `gen_figures.py` and regenerating. Cut to meet 10-page main-text limit: removed Fig 6 (GoCreate scatter, redundant w/ Fig 5+Table XII), Table X (qualitative, redundant w/ confusion), Table XIII (signature — kept 0.00/0.18/0.24 numbers inline), and the Acknowledgements section (AI-disclosure deferred to camera-ready; `.tex` comment marks the spot). Removed Gemini 3.1 Pro partial-result claims (reviewer liability) and fixed a Discussion contradiction (it framed the observability gap as unsolved future work). Title/abstract untouched. Canonical paper: `ICSE 2027_Templates/weave-research/main.tex`. **Camera-ready TODO if accepted: restore Acknowledgements/AI disclosure.** Cosmetic: Fig 3 legend still says Leak n=36/Race n=20 vs real 38/17.
 - **2026-06-24**: **All gap evals complete. All experiments locked.** Gap 1 (P21 Qwen3-8B on 798 GoKer): **30.3%** overall, **4.2% GoUnblock** (2/48) — confirms 0%→4.2% recovery on same test set as Phase 16. Gap 2 (P16 Qwen2.5-7B on 545 traj val): 58.0% overall, 20% GoUnblock (near-random on enriched format, not the clean proof). Rollout P21: **19.64 mean steps** (55/56 programs hit 20-step max). All results local in `eval/results/`. Paper writing is the only remaining task.
@@ -35,10 +36,10 @@
 
 ## Current State
 
-**Target: ICSE 2027 Research Track (deadline Mon 30 Jun 2026 AoE). ALL EXPERIMENTS COMPLETE.**
-Canonical paper: `ICSE 2027_Templates/weave-research/main.tex` (expand to 10 pages — this is the only remaining task).
+**Target: ICSE 2027 Research Track (deadline Mon 30 Jun 2026 AoE). PHASE 23 IN PROGRESS.**
+Canonical paper: `ICSE 2027_Templates/weave-research/main.tex` (drafted, 11 pages, page-limit compliant).
 
-**Active branch:** `phase-21-instrumentation`
+**Active branch:** `phase-23-stratified-training`
 
 **Preprint** live on Zenodo (DOI: 10.5281/zenodo.20682004) and arXiv (arXiv:2606.17508).
 
@@ -153,26 +154,42 @@ Leak programs: 10.8 mean survival | Race programs: 9.76 mean survival | Entropy 
   - Rebuilt dataset: 970 train trajectories, 545 val trajectories, 308 containing enriched states.
   - Retrained Qwen3-8B trajectory model on RunPod.
   - Evaluated on 545 trajectory val: **49.7%** (raw) / **50.6%** (regex corrected); GoUnblock recovery of **11.4%** (4/35).
+- [x] **Phase 22 — Real-World Dataset Expansion**
+  - Auto-imported and instrumented 37 new GoKer real-world bug programs → 103 total programs, 1,287 val examples.
+  - Fixed stale `testing` import in extracted programs. Results: **25.3%** (326/1287), **3.6% GoUnblock** (2/55).
+  - Branch `phase-22-dataset-evaluation` never PR-merged; all work already present in `phase-23-stratified-training` — PR 22 safely skipped.
+- [ ] **Phase 23 — Stratified CE Training (Class 1 validation)** 🟡 RUNNING
+  - Balanced oversampling: 200 examples/event type, 2,004 train, 1,287 val (103 GoKer).
+  - Hypothesis: GoSched/GoEnd 0% accuracy is distributional (not architectural) — balanced training should recover both.
+  - Pod: L4 (24GB) @ 213.173.105.25:10087 | Log: `/root/train_phase23.log`
+  - Adapter saves to `/workspace/lora_adapter_phase23` (network volume).
+  - **Next: eval with `scripts/runpod_eval_phase23.sh` → add GoSched/GoEnd recovery numbers to paper Discussion.**
 
 ---
 
 ## Immediate Next Steps
 
-### 1. Finalise Research Track paper (`ICSE 2027_Templates/weave-research/main.tex`)
-- Incorporate Phase 21 scale-up results: **49.7%** (or **50.6%** with regex correction) on 545 trajectory validation examples.
-- Document **11.4%** GoUnblock recovery at scale under Phase 21.
-- Update tables and figures to include Qwen3-8B Phase 21 results.
-- Compile and run LaTeX builds to verify correct compilation of the 10-page draft.
+### 1. Wait for Phase 23 training to complete (~5 hours from launch)
+```bash
+ssh -p 10087 -i ~/.ssh/id_runpod root@213.173.105.25 'tail -f /root/train_phase23.log'
+```
 
-### 2. Research Track Submission Details
-- **Submission deadline:** Mon 30 Jun 2026 (AoE) — the active target.
-- **Format:** 10 pages main text + 2 pages references, IEEEtran 10pt (two-column), double-anonymous.
-- Check anonymization throughout.
-- Keep the NIER draft archived at `ICSE 2027_Templates/weave-nier/` for future reference.
+### 2. Run Phase 23 eval (as soon as training log shows "Training complete")
+```bash
+RUNPOD_IP=213.173.105.25 RUNPOD_PORT=10087 bash scripts/runpod_eval_phase23.sh
+scp -P 10087 -i ~/.ssh/id_runpod root@213.173.105.25:/root/eval_results_phase23.json eval/results/eval_results_phase23.json
+```
 
----
-- **Format:** 4 pages main + 1 page references, IEEEtran 10pt (no compsoc), double-anonymous.
-- The Research Track attempt is dropped; its draft is archived at `ICSE 2027_Templates/weave-research/` (see its `ARCHIVED.md`).
+### 3. Add Phase 23 results to paper
+- Open `ICSE 2027_Templates/weave-research/main.tex`
+- In the Discussion section, update the Class 1 paragraph with measured GoSched/GoEnd recovery numbers from `eval_results_phase23.json`
+- If GoSched/GoEnd recover to >10%: confirms Class 1 claim (simple distributional fix works)
+- If they don't recover: strengthens the argument that a more structural fix is needed
+
+### 4. Final proofread + submit
+- **Deadline: Mon 30 Jun 2026 AoE**
+- Double-anonymity sweep (no author names, third-person self-citations)
+- Camera-ready TODO if accepted: restore Acknowledgements/AI-disclosure (`.tex` comment marks location)
 
 ---
 

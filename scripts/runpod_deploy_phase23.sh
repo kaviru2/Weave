@@ -61,7 +61,7 @@ echo "[4/5] Launching Phase 23 CE training (balanced)..."
 ssh $SSH_OPTS root@$RUNPOD_IP "
     export HF_HOME=/workspace/hf_cache
     HF_HOME=/workspace/hf_cache nohup python -u /root/train_lora_unsloth.py \
-        --model_id   Qwen/Qwen3-8B \
+        --model_id   /workspace/hf_cache/hub/models--Qwen--Qwen3-8B/snapshots/b968826d9c46dd6066d109eabc6255188de91218 \
         --train_file /root/train_point_dups_balanced.jsonl \
         --val_file   /root/val_point_dups.jsonl \
         --output_dir /workspace/lora_adapter_phase23 \

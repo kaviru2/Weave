@@ -46,8 +46,12 @@ sync events into the same scheduler trace — no runtime fork, no sidecar file.
 
 **Template:** `runpod-torch-v240` (PyTorch 2.4.x). No tmux pre-installed — use `nohup ... &`.
 
-**Storage:** Container disk (`/`, 20GB) for code/data; network volume (`/workspace`, 20GB)
+**Storage:** Container disk (`/`, 20GB) for code/data; network volume (`/workspace`, 40GB)
 for model weights. Always set `HF_HOME=/workspace/hf_cache` before any HuggingFace downloads.
+**IMPORTANT:** Network vol has Qwen3-8B (16GB) + Qwen2.5-Coder-7B (15GB) = ~31GB used. Only ~7GB free.
+When using Unsloth, pass the full local snapshot path (not the HF model ID) to bypass Unsloth's
+auto-redirect to `unsloth/Qwen3-8B-unsloth-bnb-4bit` which tries to download another ~4GB.
+Snapshot path: `/workspace/hf_cache/hub/models--Qwen--Qwen3-8B/snapshots/b968826d9c46dd6066d109eabc6255188de91218`
 
 **GPU:** RTX 4000 Ada (20GB, ~$0.26/hr) — first choice. A40 (48GB, ~$0.44/hr) fallback.
 
@@ -75,7 +79,7 @@ For training: `pip install unsloth` handles everything.
 of `AutoModelForCausalLM`. **Qwen3 requires `enable_thinking=False`** in every
 `tokenizer.apply_chat_template()` call — already set in all scripts.
 
-## All Completed Phases (1–21)
+## All Completed Phases (1–23)
 
 | Phase | What | Key result |
 |---|---|---|
@@ -91,7 +95,8 @@ of `AutoModelForCausalLM`. **Qwen3 requires `enable_thinking=False`** in every
 | 18 | Statistical analysis | McNemar p=0.016 ✅, GoCreate +24pp, majority 35.5% |
 | 20 | Observability wrapper + Qwen3-8B retrain | GoUnblock 0%→4% (798 GoKer), WeaveChan/WeaveMutex proven |
 | 21 | Full Instrumentation + Retrain | GoUnblock recovered at scale (**11.4%** vs 0% baseline), trajectory val accuracy **49.7%** (50.6% regex) |
-| 22 | Dataset Expansion (Real-World) | Scanned and auto-instrumented 37 new GoKer real-world bugs, expanding evaluation scope to 103 total real-world bugs. |
+| 22 | Dataset Expansion (Real-World) | Auto-instrumented 37 new GoKer bugs → 103 total real-world programs; eval: **25.3%** overall, **3.6% GoUnblock** on full 1,287-example set |
+| 23 | Stratified CE Training (Class 1 fix) | 🟡 **RUNNING** — balanced oversampling (200/class); validating GoSched/GoEnd 0% is distributional, not architectural |
 
 ---
 
@@ -120,12 +125,20 @@ All experiments complete as of 2026-06-24. Do not re-run evals — use these num
 
 ---
 
-## Current Status: PAPER DRAFTED — FINAL PROOFREAD + SUBMIT
+## Current Status: PHASE 23 TRAINING RUNNING — PAPER SUBMIT PENDING
 
-**Deadline: Mon 30 Jun 2026 AoE (~6 days from 2026-06-24)**
+**Deadline: Mon 30 Jun 2026 AoE (~5 days from 2026-06-25)**
 
-All experiments complete. Paper drafted and compiles clean at **11 pages** (main text ends page 10,
-page 11 references-only — page-limit compliant). Remaining: final prose read-through, anonymity sweep, submit.
+**Phase 23 in progress:** Stratified CE training on L4 (24GB) @ 213.173.105.25:10087. Uses
+local Qwen3-8B snapshot (`/workspace/hf_cache/hub/models--Qwen--Qwen3-8B/snapshots/b968826...`)
+to bypass Unsloth's auto-redirect. Adapter saving to `/workspace/lora_adapter_phase23`.
+
+**After Phase 23 completes:** Run eval → `bash scripts/runpod_eval_phase23.sh` → download
+`eval/results/eval_results_phase23.json` → add Phase 23 numbers to paper's Discussion section
+(validates/refutes Class 1 taxonomy claim). Then final proofread + submit.
+
+Paper already drafted and compiles clean at **11 pages** (main text ends page 10,
+page 11 references-only — page-limit compliant). Remaining: Phase 23 result → paper update → anonymity sweep → submit.
 
 ### Paper finalization (2026-06-24)
 

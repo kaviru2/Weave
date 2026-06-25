@@ -8,14 +8,15 @@ Live tracker for GPU training runs. Update after each run.
 
 | Field | Value |
 |-------|-------|
-| **Status** | 🟡 RUNNING |
-| **Pod name** | phase 20 |
+| **Status** | 🟡 RUNNING (training started ~16:13 UTC, ~5hr est.) |
+| **Pod name** | phase-23 |
 | **GPU** | L4 (24GB VRAM) |
 | **IP / Port** | 213.173.105.25 : 10087 |
 | **SSH key** | `~/.ssh/id_runpod` |
-| **Cost** | $0.39/hr compute + $0.003/hr storage |
-| **Network vol** | Weave (40GB) @ `/workspace` — model weights + adapter saved here |
-| **Model** | `Qwen/Qwen3-8B` (cached at `/workspace/hf_cache`) |
+| **Cost** | ~$0.39/hr compute + $0.003/hr storage |
+| **Network vol** | Weave (40GB) @ `/workspace` — ~31GB used (Qwen3-8B 16GB + Qwen2.5-Coder 15GB) |
+| **Model** | Local snapshot: `/workspace/hf_cache/hub/models--Qwen--Qwen3-8B/snapshots/b968826d9c46dd6066d109eabc6255188de91218` |
+| **Why local path** | Network vol only has ~7GB free; Unsloth auto-redirects HF ID to download `unsloth/Qwen3-8B-unsloth-bnb-4bit` (~4GB) which hits quota. Local path bypasses redirect. |
 | **Train data** | `train_point_dups_balanced.jsonl` (2,004 ex — balanced 200/class) |
 | **Val data** | `val_point_dups.jsonl` (1,287 ex, 103 GoKer) |
 | **Adapter saved to** | `/workspace/lora_adapter_phase23` (persists on network vol) |
