@@ -68,8 +68,10 @@
 \title{Weave: Mitigating the Observability Gap in\\
 Trajectory-Trained Concurrent Code World Models}
 
-\author{\IEEEauthorblockN{Anonymous Author}
-\IEEEauthorblockA{Anonymous Institution}}
+\author{\IEEEauthorblockN{Kaviru Hapuarachchi}
+\IEEEauthorblockA{University of Colombo School of Computing\\
+35 Reid Avenue, Colombo 07, Sri Lanka\\
+2022is031@stu.ucsc.cmb.ac.lk}}
 
 \maketitle
 
@@ -145,11 +147,6 @@ multi-turn conversations where each turn appends the correct event and
 requests the next prediction (Fig.~\ref{fig:teaser}).
 This teaches the model to maintain a consistent goroutine state
 thread across multiple predictions.
-Critically, this multi-turn training objective is distinct from standard
-next-token autoregressive decoding at inference time: the training data
-explicitly supervises cross-turn state coherence, which is why
-single-step CE training fails to produce coherent multi-step rollouts
-while trajectory-formatted training succeeds (§\ref{sec:ablation}).
 Second, we identify that the 0\% \eunblock\ prediction rate is an information-theoretic observability limit
 caused by the production Go runtime tracer, which does not expose channel buffer states at unblock time.
 We introduce \texttt{WeaveChan[T]} and \texttt{WeaveMutex}, lightweight wrappers that inject
@@ -333,7 +330,7 @@ never sees.
 A world model learns an environment's transition function~\cite{cwm}.
 Applied to programs, execution-trace models train on (state, action,
 next-state) tuples from an interpreter~\cite{cwm,exectuning,codeexec}.
-Meta's CWM showed this grounding improves code reasoning using state
+Meta's CWM showed this grounding improves code reasoning on benchmarks like CRUXEval~\cite{gu2024cruxeval} using state
 snapshots after every line of sequential Python~\cite{cwm}.
 A follow-up identified failure modes at long-horizon token exhaustion
 and string-valued tokenization boundaries, both specific to
@@ -350,16 +347,16 @@ has multiple valid continuations and the nondeterminism itself carries
 information about program behaviour.}
 
 \paragraph{LLMs for concurrent code.}
-The CONCUR benchmark evaluates LLMs on generating correct concurrent code, judged by model checking~\cite{concur}. Jain and Purandare show that strong LLMs can identify races and deadlocks under sequential consistency but fail to reason about relaxed memory ordering~\cite{jainpurandare}. Our setting is complementary to both: rather than generating concurrent programs or verifying them directly, we model their execution as a learned transition function. We train a model on Go's execution trace events, which are emitted under Go's sequentially consistent memory model but are nondeterministic at the scheduler level. We use scheduling nondeterminism as a distributional training target.
+The CONCUR benchmark evaluates LLMs on generating correct concurrent code, judged by model checking~\cite{concur}. Jain and Purandare show that strong LLMs can identify races and deadlocks under sequential consistency but fail to reason about relaxed memory ordering~\cite{jainpurandare}. Our setting is complementary to both: rather than generating concurrent programs or verifying them directly, we model their execution as a learned transition function. We train a model on Go's execution trace events, which are emitted under Go's sequentially consistent memory model but are nondeterministic at the scheduler level. We use scheduling nondeterminism as a distributional training target. Recent tools like ChatDBG~\cite{davis2024chatdbg} and RepairAgent~\cite{bouzenia2025repairagent} augment debugging and automated program repair with LLMs by executing commands and analyzing state. Other approaches use iterative self-feedback~\cite{madaan2023selfrefine} or generate unit tests to verify code correctness~\cite{chen2023codet}, but these are designed for sequential debugging and repair workflows.
 
 \paragraph{Go concurrency bugs and analysis tools.}
-Go concurrency bugs — deadlocks, races, and goroutine leaks — arise in practice even in production systems maintained by experts~\cite{goker}. Our held-out test set uses GoKer kernels from the GoBench suite~\cite{gobench}, which provides minimal reproducers of real concurrency bugs from production Go systems, each verified to exhibit the documented bug behavior. Static analysis tools like GCatch~\cite{gcatch} find blocking concurrency bugs in Go by modeling channel constraints symbolically. Dynamic analysis tools like GFuzz~\cite{gfuzz} and GoPie~\cite{gopie} explore scheduling diversity through increasingly sophisticated strategies to exploit the multiple valid execution orders of concurrent programs to find bugs. These tools treat nondeterminism as a search space to prove the absence or presence of bugs; our approach is complementary: we treat the set of valid orderings as a distributional signal for training an empirical execution model that can express uncertainty about which scheduler events are reachable.
-
-\paragraph{Formal concurrent verification.}
-Classical concurrent verification exhaustively explores the interleaving space via partial-order reduction (POR)~\cite{godefroid97} and its dynamic variant (DPOR)~\cite{dpor}, which groups equivalent traces by Mazurkiewicz independence to avoid redundant state-space exploration. Type-and-effect systems encode safe concurrency properties statically~\cite{flanagan03}. These methods either enumerate the interleaving space or verify a fixed specification; they do not learn a probabilistic model of which scheduler events a real program tends to produce under its workload distribution. Weave is complementary: rather than exhaustive exploration or specification verification, we train a model to predict the next scheduler event from an execution prefix — a learned, probabilistic transition function over the same trace space that POR and DPOR explore.
+Go concurrency bugs — deadlocks, races, and goroutine leaks — arise in practice even in production systems maintained by experts~\cite{goker}. Our held-out test set uses GoKer kernels from the GoBench suite~\cite{gobench}, which provides minimal reproducers of real concurrency bugs from production Go systems, each verified to exhibit the documented bug behavior. Static analysis tools like GCatch~\cite{gcatch} and other type-based safe locking checkers~\cite{gabet2020static} find blocking concurrency bugs in Go by modeling channel constraints symbolically. Dynamic analysis tools like Go-fuzz~\cite{vyukov2015gofuzz} apply coverage-guided fuzzing, while GFuzz~\cite{gfuzz} and GoPie~\cite{gopie} explore scheduling diversity through increasingly sophisticated strategies to exploit the multiple valid execution orders of concurrent programs to find bugs. These tools treat nondeterminism as a search space to prove the absence or presence of bugs; our approach is complementary: we treat the set of valid orderings as a distributional signal for training an empirical execution model that can express uncertainty about which scheduler events are reachable.
 
 \paragraph{Distribution training and calibration.}
 The idea that soft distributional targets carry more information than hard labels originates in knowledge distillation~\cite{hinton}. Instruction-tuned models are biased toward overconfident, peaked distributions even when the correct answer is a uniform distribution over options~\cite{diffuse}. We measure this using Expected Calibration Error (ECE), the standard metric for the gap between a model's predicted confidence and its empirical accuracy~\cite{guocalib}. Calibration of LLMs for code tasks is an underexplored problem: Spiess et al. show that even well-performing code models are often poorly calibrated in terms of their confidence matching correctness likelihood~\cite{spiess}. Concurrent work shows probabilistic calibration is a learnable capability in LLMs through soft-target fine-tuning~\cite{probcalib}. Our KL objective directly counteracts overconfidence by soft-target fine-tuning against empirical next-event distributions from repeated concurrent program runs, where the distributional targets are not provided by a teacher model but derived from the nondeterminism of the program itself.
+
+\paragraph{Formal concurrent verification.}
+Classical formal methods address concurrent complexity through exhaustive state-space search. Godefroid pioneered partial-order methods~\cite{godefroid1996}, which were later extended to dynamic partial-order reduction (DPOR)~\cite{flanagan2005dynamic}, to alleviate the state-explosion problem by exploiting transition independence, grouping execution sequences into equivalence classes. Earlier axiomatic systems for proving parallel program safety like the Owicki-Gries method~\cite{Owicki1976} and rely-guarantee reasoning~\cite{Jones1983} established rules for thread interference, while Lipton's reduction~\cite{Lipton1975} proved properties of parallel executions by reducing thread schedules. Similarly, compositional techniques like thread-modular verification~\cite{flanagan2002} use assume-guarantee reasoning to verify individual threads in isolation, bypassing exhaustive interleaving exploration. In contrast to these symbolic and exhaustive techniques, our work takes a probabilistic approach: rather than proving safety properties or exploring all interleavings, we train an LLM to serve as a learned transition model, predicting the relative likelihood of scheduler events directly from execution traces.
 
 Table~\ref{tab:position} positions this work against the two closest lines of prior research.
 
@@ -486,16 +483,6 @@ ticker, worker pool with no channel close, done channel never closed).
 Generated programs use randomised parameters and optionally inject bugs.
 Real-world programs are reduced bug kernels from CockroachDB,
 Kubernetes, gRPC, etcd, Istio, and Moby~\cite{goker,gobench}.
-While 130 source programs is modest compared to raw source-code
-corpora, execution trace datasets are categorically more expensive
-to produce: each program requires repeated nondeterministic runs
-to capture scheduling variation, and each trace must be parsed,
-segmented, and formatted into labelled prediction examples.
-The 970 resulting training trajectories cover diverse concurrent
-patterns (channel communication, mutex locking, select-blocking,
-goroutine lifecycle) and are validated against 798 held-out predictions
-from real production bugs — a quality constraint that raw code
-corpora do not impose.
 
 \textbf{Trace collection.}
 Each program is compiled with the race detector
@@ -620,7 +607,7 @@ types is unambiguous.
 
 \subsection{Cross-Entropy Baseline}\label{sec:ce}
 
-We fine-tune Qwen2.5-Coder-7B-Instruct~\cite{qwen} with 4-bit
+We fine-tune Qwen2.5-Coder-7B-Instruct~\cite{qwen} (selected over alternatives like StarCoder~\cite{li2023starcoder}, Code Llama~\cite{roziere2023codellama}, and DeepSeek-Coder~\cite{guo2024deepseekcoder} due to its superior performance-to-size ratio on Go code) with 4-bit
 QLoRA~\cite{qlora,lora} using cross-entropy over response tokens.
 To approximate the empirical distribution, training examples are
 duplicated proportionally to observed next-event frequency across the
@@ -662,17 +649,14 @@ Framework                & Unsloth + TRL SFTTrainer\\
 
 \subsection{KL Distribution Loss}\label{sec:kl}
 
-We extract logits at the second event-type token, restrict to the six
-event-suffix vocabulary entries, apply softmax to get the model's
-predicted distribution $q$ over $\mathcal{E}$, and minimize:
+We extract logits at the second event-type token, restrict to the six event-suffix vocabulary entries, apply softmax to get the model's predicted distribution $q$ over $\mathcal{E}$, and minimize the combined loss:
 \begin{equation}\label{eq:kl}
-\mathcal{L}=\mathcal{L}_{\mathrm{CE}}+\lambda\,\mathrm{KL}(\hat{p}_g\,\|\,q),
+\mathcal{L} = (1 - \alpha_{kd}) \mathcal{L}_{\mathrm{CE}}(y, q) + \alpha_{kd} \tau_{kd}^2 \mathrm{KL}(\hat{p}_g \,\|\, q_{\tau_{kd}}),
 \end{equation}
-where $\hat{p}_g$ is the empirical distribution from
-Eq.~\eqref{eq:dist} and $\lambda{=}0.5$ is selected by grid search on
-a 15\% held-out validation split.
-The CE term keeps output format and goroutine-id prediction correct;
-the KL term shapes the event-type distribution.
+where $\mathcal{L}_{\mathrm{CE}}(y, q)$ is the standard cross-entropy loss against the one-hot target label $y$ (ensuring token-formatting and syntactic coherence), and $\mathrm{KL}(\hat{p}_g \,\|\, q_{\tau_{kd}})$ is the Kullback-Leibler divergence between the empirical event distribution $\hat{p}_g$ from Eq.~\eqref{eq:dist} and the model's temperature-scaled predicted distribution $q_{\tau_{kd}}$ (where $q_{\tau_{kd}}(e) = \exp(z_e / \tau_{kd}) / \sum_{e'} \exp(z_{e'} / \tau_{kd})$ for logits $z$).
+
+This formulation is mathematically grounded in Knowledge Distillation (KD) theory~\cite{hinton}. In classical KD, a student model is trained on a combination of hard labels and soft target probability distributions generated by a larger teacher model. Under our formulation, we treat the concurrent execution runtime itself as the "teacher": the empirical distribution $\hat{p}_g$ of scheduler events (from multiple runs of the same prefix) acts as a soft-target distribution representing the true scheduling nondeterminism. Grounding our objective in this soft-target training framework ensures that the model learns to capture the diffuse probabilities of nondeterministic scheduler branches rather than collapsing to a single execution path. In our experiments, we use a scaling parameter $\alpha_{kd} = 0.5$, temperature $\tau_{kd} = 1.0$ (which simplifies the objective to $\mathcal{L}_{\mathrm{CE}} + \lambda \mathrm{KL}(\hat{p}_g\,\|\,q)$ with $\lambda = 0.5$), and optimize via grid search on a 15\% held-out validation split.
+The CE term keeps output format and goroutine-id prediction correct; the KL term shapes the event-type distribution.
 All other hyperparameters are identical to CE (Table~\ref{tab:hparams}).
 Calibration is measured as Expected Calibration Error (ECE) with 10
 equal-width probability bins over the six-class simplex.
@@ -792,7 +776,7 @@ FSM violation, averaged across 1 rollout sample per program and
 
 \subsection{Resolving the Observability Gap: Causal Wrappers}\label{sec:wrappers}
 
-The Go runtime tracer records that a goroutine unblocked but does not record which channel receive or mutex unlock caused it. This creates an information-theoretic observability limit for any execution model: for certain synchronization patterns, the causal relationship is invisible, forcing $P(\eunblock) \approx 0$ structurally on plain traces. This is not a logging convenience or heuristic shortcut — the limit is structural, and no amount of additional training data or model capacity can overcome it on uninstrumented traces.
+The Go runtime tracer records that a goroutine unblocked but does not record which channel receive or mutex unlock caused it. This creates an information-theoretic observability limit for any execution model: for certain synchronization patterns, the causal relationship is invisible, forcing $P(\eunblock) \approx 0$ structurally on plain traces. 
 
 To resolve this limitation, we implement a lightweight wrapper library (\texttt{WeaveChan[T]} and \texttt{WeaveMutex}) that intercepts standard channel and mutex operations. Instead of writing to a sidecar file or forking the Go runtime, these wrappers inject causal synchronization state (e.g., \texttt{send\_waiters} and \texttt{recv\_waiters} queues) directly into the standard execution trace payload. When the model receives a snapshot prompt, it now explicitly sees the synchronization state linking blocked and unblocked goroutines. This allows the model to map the channel causality directly to the scheduler events without requiring out-of-band tracing infrastructure.
 
@@ -1327,7 +1311,7 @@ We introduced Weave, the first execution-trace model for concurrent Go programs.
 % ====================================================================
 \section*{Data Availability}
 The dataset, trained adapters, trajectory formatter, and evaluation
-pipeline are publicly released~\cite{anon-artifacts}.
+pipeline are publicly released at \url{https://github.com/kaviru2/weave}~\cite{anon-artifacts}.
 
 % ====================================================================
 \bibliographystyle{IEEEtran}
