@@ -18,6 +18,17 @@ Usage:
 import argparse, json, time, os
 from collections import defaultdict
 import torch
+
+# Backport set_submodule for PyTorch < 2.1 (RunPod torch 2.4 doesn't have it)
+if not hasattr(torch.nn.Module, "set_submodule"):
+    def _set_submodule(self, target: str, module: torch.nn.Module) -> None:
+        parts = target.split(".")
+        parent = self
+        for part in parts[:-1]:
+            parent = getattr(parent, part)
+        setattr(parent, parts[-1], module)
+    torch.nn.Module.set_submodule = _set_submodule
+
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 from peft import PeftModel
 
@@ -52,9 +63,12 @@ def evaluate(model, tokenizer, examples, device, args, label="fine-tuned"):
         nd_level     = ex.get("nondeterminism", "unknown")
 
         prompt_msgs = [m for m in messages if m["role"] != "assistant"]
+        think_kwargs = {}
+        if "qwen3" in args.model_id.lower():
+            think_kwargs["enable_thinking"] = False
         prompt = tokenizer.apply_chat_template(
             prompt_msgs, tokenize=False, add_generation_prompt=True,
-            enable_thinking=False,
+            **think_kwargs,
         )
         inputs = tokenizer(
             prompt, return_tensors="pt",

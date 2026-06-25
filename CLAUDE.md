@@ -64,17 +64,18 @@ RUNPOD_IP=<ip> RUNPOD_PORT=<port> RUNPOD_KEY=~/.ssh/id_runpod bash scripts/runpo
 scp -P <port> -i ~/.ssh/id_runpod root@<ip>:/root/eval_results_traj.json eval/results/eval_results_traj_accuracy.json
 ```
 
-**Dep versions (RunPod torch 2.4.x):**
+**Dep versions (RunPod torch 2.4.x) — for eval:**
 ```
-transformers==4.46.3  peft==0.13.2  trl==0.11.4  bitsandbytes==0.44.1  accelerate==0.34.2  datasets==3.0.1
+transformers==4.46.3  peft (latest, -U)  accelerate  bitsandbytes>=0.46.1
 ```
+Note: `bitsandbytes==0.44.1` is too old (rejects 4-bit on newer pods). Always `pip install -U bitsandbytes`.
+For Qwen3-8B eval: `transformers>=4.51` + `torchvision` upgrade needed (see `run_eval.py` set_submodule backport).
+For training: `pip install unsloth` handles everything.
 **Unsloth:** `pip install unsloth` — 2× faster, 60% less VRAM. Use `FastLanguageModel` in place
 of `AutoModelForCausalLM`. **Qwen3 requires `enable_thinking=False`** in every
 `tokenizer.apply_chat_template()` call — already set in all scripts.
 
----
-
-## All Completed Phases (1–20)
+## All Completed Phases (1–21)
 
 | Phase | What | Key result |
 |---|---|---|
@@ -89,70 +90,55 @@ of `AutoModelForCausalLM`. **Qwen3 requires `enable_thinking=False`** in every
 | 17 | Ablation: format vs step count | Format drives all gain (+3.9pp); steps add 0pp |
 | 18 | Statistical analysis | McNemar p=0.016 ✅, GoCreate +24pp, majority 35.5% |
 | 20 | Observability wrapper + Qwen3-8B retrain | GoUnblock 0%→4% (798 GoKer), WeaveChan/WeaveMutex proven |
+| 21 | Full Instrumentation + Retrain | GoUnblock recovered at scale (**11.4%** vs 0% baseline), trajectory val accuracy **49.7%** (50.6% regex) |
 
 ---
 
 ## Locked Key Numbers (for paper)
 
+All experiments complete as of 2026-06-24. Do not re-run evals — use these numbers.
+
 | Claim | Number | Source file |
 |---|---|---|
-| Best single-step accuracy | **40.1%** (Qwen2.5-7B traj, Phase 16) | `eval_results_traj_accuracy.json` |
+| Best single-step accuracy (P16, 798 GoKer) | **40.1%** | `eval_results_traj_accuracy.json` |
 | vs majority-class baseline | **+4.6pp** (35.5% baseline) | `phase18_numbers.json` |
 | vs Phase 13 CE (McNemar) | **p=0.016**, CI [+1.0, +8.3pp] | `phase18_numbers.json` |
 | vs Gemini Flash (McNemar) | **p=0.069 ❌**, CI [−0.18, +8.77pp] | `phase18_numbers.json` |
-| Coherence | **10.48 mean survival steps** (10×) | `rollout_results_traj.json` |
-| GoCreate gain | **+24pp** (all other events flat) | `phase18_numbers.json` |
+| Coherence Phase 16 | **10.48 mean survival steps** | `rollout_results_traj.json` |
+| Coherence Phase 21 | **19.64 mean survival steps** (55/56 @ 20-step max) | `rollout_results_phase21.json` |
+| GoCreate gain (P16 vs P13) | **+24pp** (all other events flat) | `phase18_numbers.json` |
 | Format ablation | **+3.9pp format**, 0pp steps | `eval_ablation_1step.json` |
-| Gemini 3.1 Pro (partial) | **36.4%** on 253/798 (traj leads) | checkpoint — not final |
-| GoUnblock recovery | **0% → 4%** on 798 GoKer (Phase 20) | `eval_results_qwen3_traj_798.json` |
-| Qwen3-8B traj 798 GoKer | **35.8%** (−4.3pp vs P16, p=0.005) | `eval_results_qwen3_traj_798.json` |
+| GoUnblock without wrappers (all phases) | **0%** (0/48) — information-theoretic limit | `eval_results_traj_accuracy.json` |
+| GoUnblock recovery P21, same test set | **4.2%** (2/48) on 798 GoKer | `eval_results_phase21_798.json` |
+| GoUnblock recovery P21, in-distribution | **11.4%** (4/35) on 545 traj val | `eval_results_traj_enriched_point.json` |
+| P21 in-distribution accuracy | **49.7%** (271/545) | `eval_results_traj_enriched_point.json` |
+| P21 cross-format accuracy (plain prompts) | **30.3%** (242/798) | `eval_results_phase21_798.json` |
+| P16 on enriched prompts (cross-format) | **58.0%** (316/545) | `eval_results_phase16_545.json` |
 
 **Eval results location (gitignored — do not delete):** `eval/results/`
 
 ---
 
-## Current Phase: Research Track Engineering Sprint (Phase 21)
+## Current Status: PAPER DRAFTED — FINAL PROOFREAD + SUBMIT
 
-**Deadline: Mon 30 Jun 2026 AoE (~7 days)**
+**Deadline: Mon 30 Jun 2026 AoE (~6 days from 2026-06-24)**
 
-The Research Track paper needs the observability result as a **completed experiment**, not
-future work. Phase 20 proved feasibility (18 enriched examples → GoUnblock 0%→4%). Phase 21
-scales this to the full 130-program corpus and retrains.
+All experiments complete. Paper drafted and compiles clean at **11 pages** (main text ends page 10,
+page 11 references-only — page-limit compliant). Remaining: final prose read-through, anonymity sweep, submit.
 
-### Phase 21 — Full Instrumentation + Retrain
+### Paper finalization (2026-06-24)
 
-**Goal:** Show GoUnblock recovery at scale with the full enriched corpus.
+* Canonical paper: `ICSE 2027_Templates/weave-research/main.tex`; figures from `gen_figures.py` (run from that dir to regenerate).
+* Fixed figure overlaps (Fig 2 stale `p=0.0001` callout + x-labels; Fig 3 annotation/legend) — regenerated.
+* To meet the 10-page main-text limit, removed: **Fig 6** (GoCreate scatter), **Table X** (qualitative), **Table XIII** (signature — numbers kept inline), **Acknowledgements** section.
+* Removed Gemini 3.1 Pro partial claims; fixed a Discussion contradiction on the observability gap.
+* **CAMERA-READY TODO if accepted:** restore the Acknowledgements / generative-AI disclosure (a `.tex` comment marks the location).
 
-**Step 1 — Instrument remaining programs (~2 days, local):**
-- Already done: `01_simple_channel`, `03_mutex_counter`, `06_channel_select`, `07_worker_pool`,
-  `02_multiple_goroutines`, `13_buffered_channel`, `14_goroutine_leak`, `21_done_channel_leak`,
-  `22_mutex_deadwait` (9 programs in `instrumented/`)
-- Remaining: extend `WeaveChan`/`WeaveMutex` wrappers to the remaining channel/mutex programs
-  in `programs/`. GoKer programs do not need instrumentation (they are eval-only).
-- Script: `cmd/build_p20/main.go` — extend to cover all hand-crafted programs.
+### All Gap Evals Complete (2026-06-24)
 
-**Step 2 — Rebuild trajectory dataset (~30 min, local):**
-```bash
-uv run python dataset/prepare_trajectory.py
-```
-Target: all p20-instrumented examples have `recv_waiters`/`send_waiters` populated in
-`<current_state>`. Verify with: `grep -c "recv_waiters" dataset/output/train_trajectory.jsonl`
-
-**Step 3 — Retrain on RTX 4000 Ada (~2–3 hr, ~$1):**
-```bash
-USE_TRAJ=1 RUNPOD_IP=<ip> RUNPOD_PORT=<port> RUNPOD_KEY=~/.ssh/id_runpod bash scripts/runpod_deploy.sh
-```
-
-**Step 4 — Eval on 798 GoKer (~45 min, ~$0.20):**
-```bash
-RUNPOD_IP=<ip> RUNPOD_PORT=<port> RUNPOD_KEY=~/.ssh/id_runpod bash scripts/runpod_eval_traj.sh
-```
-Download: `eval_results_traj_enriched_798.json` → `eval/results/`.
-Run McNemar vs Phase 16 (40.1%) and vs Phase 20 Qwen3 (35.8%).
-
-**Definition of done:** GoUnblock accuracy > 0% on GoKer 798, confirmed by McNemar.
-If GoUnblock doesn't move, report honestly as a null result — the observability claim still
-stands from the 18-example proof-of-concept.
+* **Gap 1** — P21 Qwen3-8B on 798 GoKer: **30.3%** overall, **4.2% GoUnblock** (2/48)
+* **Gap 2** — P16 Qwen2.5-7B on 545 traj val (enriched format): **58.0%** overall, 20% GoUnblock (near-random on 35 examples — not the clean proof; the clean proof is Gap 1)
+* **Rollout P21** — **19.64 mean steps**, 55/56 programs hit 20-step maximum
 
 ---
 
