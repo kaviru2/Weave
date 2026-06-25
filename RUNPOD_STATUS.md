@@ -4,6 +4,16 @@ Live tracker for GPU training runs. Update after each run.
 
 ---
 
+## Session 2026-06-25 — Phase 22 Dataset Expansion & Inference — PLANNED
+
+### Expanded Evaluation on 103 GoKer Bugs
+
+* **Goal:** Run evaluation (inference) using the existing Phase 21 Qwen3-8B adapter and Phase 16 Qwen2.5-7B adapter on the newly expanded test set of 103 GoKer bugs (including the 37 newly imported ones).
+* **Dataset:** 103 real-world GoKer bugs (in `programs/` directory).
+* **Status:** Ready to run. Scripts `scripts/eval_unsloth.py` and `scripts/run_eval.py` can be used to execute inference on the expanded dataset on RunPod.
+
+---
+
 ## Session 2026-06-24 — Phase 21 Gap Evals (3 pods) — ALL COMPLETE
 
 ### Rollout Pod — Phase 21 autoregressive rollout — DONE

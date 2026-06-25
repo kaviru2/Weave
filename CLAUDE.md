@@ -91,6 +91,7 @@ of `AutoModelForCausalLM`. **Qwen3 requires `enable_thinking=False`** in every
 | 18 | Statistical analysis | McNemar p=0.016 ✅, GoCreate +24pp, majority 35.5% |
 | 20 | Observability wrapper + Qwen3-8B retrain | GoUnblock 0%→4% (798 GoKer), WeaveChan/WeaveMutex proven |
 | 21 | Full Instrumentation + Retrain | GoUnblock recovered at scale (**11.4%** vs 0% baseline), trajectory val accuracy **49.7%** (50.6% regex) |
+| 22 | Dataset Expansion (Real-World) | Scanned and auto-instrumented 37 new GoKer real-world bugs, expanding evaluation scope to 103 total real-world bugs. |
 
 ---
 
