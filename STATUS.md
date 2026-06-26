@@ -36,8 +36,9 @@
 
 ## Current State
 
-**Target: ICSE 2027 Research Track (deadline Mon 30 Jun 2026 AoE). PHASE 23 IN PROGRESS.**
+**Target: ICSE 2027 Research Track (deadline Mon 30 Jun 2026 AoE). ALL EXPERIMENTS COMPLETE.**
 Canonical paper: `ICSE 2027_Templates/weave-research/main.tex` (drafted, 11 pages, page-limit compliant).
+**Remaining: update Discussion with Phase 23 findings → proofread → submit.**
 
 **Active branch:** `phase-23-stratified-training`
 
@@ -158,38 +159,32 @@ Leak programs: 10.8 mean survival | Race programs: 9.76 mean survival | Entropy 
   - Auto-imported and instrumented 37 new GoKer real-world bug programs → 103 total programs, 1,287 val examples.
   - Fixed stale `testing` import in extracted programs. Results: **25.3%** (326/1287), **3.6% GoUnblock** (2/55).
   - Branch `phase-22-dataset-evaluation` never PR-merged; all work already present in `phase-23-stratified-training` — PR 22 safely skipped.
-- [ ] **Phase 23 — Stratified CE Training (Class 1 validation)** 🟡 RUNNING
+- [x] **Phase 23 — Stratified CE Training (Class 1 validation)** ✅ COMPLETE
   - Balanced oversampling: 200 examples/event type, 2,004 train, 1,287 val (103 GoKer).
-  - Hypothesis: GoSched/GoEnd 0% accuracy is distributional (not architectural) — balanced training should recover both.
-  - Pod: L4 (24GB) @ 213.173.105.25:10087 | Log: `/root/train_phase23.log`
-  - Adapter saves to `/workspace/lora_adapter_phase23` (network volume).
-  - **Next: eval with `scripts/runpod_eval_phase23.sh` → add GoSched/GoEnd recovery numbers to paper Discussion.**
+  - **Overall: 37.5%** (482/1287), +12.2pp vs Phase 22. GoCreate: **77.6%**.
+  - **GoSched: 0%, GoEnd: 0%** despite balanced training — runtime-state gap, not distributional.
+  - GoUnblock: 0% on uninstrumented val — confirms Class 2 thesis.
+  - **Key finding:** Taxonomy revised. GoSched/GoEnd need runtime instrumentation (preemption counters, goroutine return depth), not just more data. Same root cause as GoUnblock.
+  - Result: `eval/results/eval_results_phase23.json`
 
 ---
 
-## Immediate Next Steps
+## Immediate Next Step: UPDATE PAPER + SUBMIT
 
-### 1. Wait for Phase 23 training to complete (~5 hours from launch)
-```bash
-ssh -p 10087 -i ~/.ssh/id_runpod root@213.173.105.25 'tail -f /root/train_phase23.log'
-```
+**ALL EXPERIMENTS COMPLETE. Deadline: Mon 30 Jun 2026 AoE (~4 days).**
 
-### 2. Run Phase 23 eval (as soon as training log shows "Training complete")
-```bash
-RUNPOD_IP=213.173.105.25 RUNPOD_PORT=10087 bash scripts/runpod_eval_phase23.sh
-scp -P 10087 -i ~/.ssh/id_runpod root@213.173.105.25:/root/eval_results_phase23.json eval/results/eval_results_phase23.json
-```
+### 1. Update Discussion in `ICSE 2027_Templates/weave-research/main.tex`
+Add Phase 23 results and revised taxonomy. Key paragraph to update:
+- Replace "Class 1 = distributional gap" framing with empirical finding: stratified sampling
+  raised global accuracy +12.2pp but GoSched/GoEnd remain at 0% — proving runtime-state gap.
+- New one-liner: *"Stratified sampling is necessary but not sufficient; GoSched/GoEnd require
+  the same instrumentation principle as GoUnblock, applied at the goroutine-lifecycle layer."*
+- Add confusion matrix numbers inline if space permits (GoCreate 77.6%, GoBlock 24.3%).
 
-### 3. Add Phase 23 results to paper
-- Open `ICSE 2027_Templates/weave-research/main.tex`
-- In the Discussion section, update the Class 1 paragraph with measured GoSched/GoEnd recovery numbers from `eval_results_phase23.json`
-- If GoSched/GoEnd recover to >10%: confirms Class 1 claim (simple distributional fix works)
-- If they don't recover: strengthens the argument that a more structural fix is needed
-
-### 4. Final proofread + submit
-- **Deadline: Mon 30 Jun 2026 AoE**
+### 2. Final proofread + submit
 - Double-anonymity sweep (no author names, third-person self-citations)
-- Camera-ready TODO if accepted: restore Acknowledgements/AI-disclosure (`.tex` comment marks location)
+- Verify LaTeX compiles clean, stays ≤10 pages main text
+- **Camera-ready TODO if accepted:** restore Acknowledgements/AI-disclosure (`.tex` comment marks location)
 
 ---
 

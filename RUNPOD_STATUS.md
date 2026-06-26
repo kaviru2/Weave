@@ -4,37 +4,32 @@ Live tracker for GPU training runs. Update after each run.
 
 ---
 
-## Session 2026-06-25 — Phase 23 Stratified CE Training — 🟡 RUNNING
+## Session 2026-06-25 — Phase 23 Stratified CE Training — ✅ COMPLETE
 
 | Field | Value |
 |-------|-------|
-| **Status** | 🟡 RUNNING (training started ~16:13 UTC, ~5hr est.) |
+| **Status** | ✅ DONE — pod terminated 2026-06-25 |
 | **Pod name** | phase-23 |
 | **GPU** | L4 (24GB VRAM) |
 | **IP / Port** | 213.173.105.25 : 10087 |
-| **SSH key** | `~/.ssh/id_runpod` |
-| **Cost** | ~$0.39/hr compute + $0.003/hr storage |
-| **Network vol** | Weave (40GB) @ `/workspace` — ~31GB used (Qwen3-8B 16GB + Qwen2.5-Coder 15GB) |
-| **Model** | Local snapshot: `/workspace/hf_cache/hub/models--Qwen--Qwen3-8B/snapshots/b968826d9c46dd6066d109eabc6255188de91218` |
-| **Why local path** | Network vol only has ~7GB free; Unsloth auto-redirects HF ID to download `unsloth/Qwen3-8B-unsloth-bnb-4bit` (~4GB) which hits quota. Local path bypasses redirect. |
+| **Model** | Local snapshot: `/workspace/hf_cache/hub/models--Qwen--Qwen3-8B/snapshots/b968826d9c46dd6066d109eabc6255188de91218` (local path used to bypass Unsloth quota-hit auto-redirect) |
 | **Train data** | `train_point_dups_balanced.jsonl` (2,004 ex — balanced 200/class) |
 | **Val data** | `val_point_dups.jsonl` (1,287 ex, 103 GoKer) |
-| **Adapter saved to** | `/workspace/lora_adapter_phase23` (persists on network vol) |
-| **Train log** | `/root/train_phase23.log` |
+| **Adapter (HF)** | `kavirubc/weave-ccwm-qwen3-8b-ce-balanced-lora` |
+| **Local result** | `eval/results/eval_results_phase23.json` |
 
-**Goal:** Balanced oversampling (GoSched 4→200 ex, GoEnd 22→200 ex) to validate Class 1 taxonomy claim.
+**Results:**
+- **Overall: 37.5%** (482/1287) — +12.2pp vs Phase 22 (25.3%)
+- **GoCreate: 77.6%** (218/281) — structural visibility confirmed
+- **GoSched: 0%** (0/80) — balanced training insufficient; runtime-state gap
+- **GoEnd: 0%** (0/86) — balanced training insufficient; runtime-state gap
+- **GoUnblock: 0%** (0/55) — confirms Class 2 thesis (uninstrumented val)
+- **GoBlock: 24.3%** | **GoStart: 40.1%**
 
-**Monitor:**
-```bash
-RUNPOD_IP=213.173.105.25 RUNPOD_PORT=10087 python3 scripts/monitor_pods.py
-# or raw tail:
-ssh root@213.173.105.25 -p 10087 -i ~/.ssh/id_runpod 'tail -f /root/train_phase23.log'
-```
-
-**When training done — run eval:**
-```bash
-RUNPOD_IP=213.173.105.25 RUNPOD_PORT=10087 bash scripts/runpod_eval_phase23.sh
-```
+**Key finding:** Stratified sampling necessary but not sufficient for GoSched/GoEnd.
+Both events require runtime state invisible to the Go tracer (preemption counters, goroutine
+return depth). Taxonomy revised: GoSched/GoEnd are a runtime-state gap (same root cause as
+GoUnblock), not a simple distributional problem. See CLAUDE.md taxonomy section.
 
 **Download results:**
 ```bash
