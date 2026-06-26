@@ -1118,7 +1118,7 @@ pre-training covers goroutine termination via exposure to Go code with
 natural goroutine lifecycles.
 Fix: stratified sampling to match the GoKer event distribution when
 constructing training batches. We tested this via a stratified training run
-(Phase 23) balancing event frequencies. This model achieved 37.5\% overall
+balancing event frequencies. This model achieved 37.5\% overall
 accuracy on the full 1287-example validation set (up from 25.3\% unstratified),
 though individual prediction of these rare events remained low, showing that
 frequency balancing alone cannot completely bypass sequential dependency.
