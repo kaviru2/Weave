@@ -3,7 +3,7 @@ dataset/output/
 eval/results/
 
 # LoRA adapter weights (large — backed up to HuggingFace)
-lora_adapter_phase21/
+lora_adapter*/
 
 # Submission zip archives
 *.zip
