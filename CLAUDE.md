@@ -46,8 +46,12 @@ sync events into the same scheduler trace — no runtime fork, no sidecar file.
 
 **Template:** `runpod-torch-v240` (PyTorch 2.4.x). No tmux pre-installed — use `nohup ... &`.
 
-**Storage:** Container disk (`/`, 20GB) for code/data; network volume (`/workspace`, 20GB)
+**Storage:** Container disk (`/`, 20GB) for code/data; network volume (`/workspace`, 40GB)
 for model weights. Always set `HF_HOME=/workspace/hf_cache` before any HuggingFace downloads.
+**IMPORTANT:** Network vol has Qwen3-8B (16GB) + Qwen2.5-Coder-7B (15GB) = ~31GB used. Only ~7GB free.
+When using Unsloth, pass the full local snapshot path (not the HF model ID) to bypass Unsloth's
+auto-redirect to `unsloth/Qwen3-8B-unsloth-bnb-4bit` which tries to download another ~4GB.
+Snapshot path: `/workspace/hf_cache/hub/models--Qwen--Qwen3-8B/snapshots/b968826d9c46dd6066d109eabc6255188de91218`
 
 **GPU:** RTX 4000 Ada (20GB, ~$0.26/hr) — first choice. A40 (48GB, ~$0.44/hr) fallback.
 
@@ -75,7 +79,7 @@ For training: `pip install unsloth` handles everything.
 of `AutoModelForCausalLM`. **Qwen3 requires `enable_thinking=False`** in every
 `tokenizer.apply_chat_template()` call — already set in all scripts.
 
-## All Completed Phases (1–21)
+## All Completed Phases (1–23)
 
 | Phase | What | Key result |
 |---|---|---|
@@ -91,13 +95,14 @@ of `AutoModelForCausalLM`. **Qwen3 requires `enable_thinking=False`** in every
 | 18 | Statistical analysis | McNemar p=0.016 ✅, GoCreate +24pp, majority 35.5% |
 | 20 | Observability wrapper + Qwen3-8B retrain | GoUnblock 0%→4% (798 GoKer), WeaveChan/WeaveMutex proven |
 | 21 | Full Instrumentation + Retrain | GoUnblock recovered at scale (**11.4%** vs 0% baseline), trajectory val accuracy **49.7%** (50.6% regex) |
-| 22 | Dataset Expansion (Real-World) | Scanned and auto-instrumented 37 new GoKer real-world bugs, expanding evaluation scope to 103 total real-world bugs. |
+| 22 | Dataset Expansion (Real-World) | Auto-instrumented 37 new GoKer bugs → 103 total real-world programs; eval: **25.3%** overall, **3.6% GoUnblock** on full 1,287-example set |
+| 23 | Stratified CE Training (Class 1 validation) | **37.5%** overall (+12.2pp vs P22); GoSched/GoEnd remain **0%** — stratified sampling necessary but not sufficient; these events need runtime state (preemption counters, function return depth), not just more data |
 
 ---
 
 ## Locked Key Numbers (for paper)
 
-All experiments complete as of 2026-06-24. Do not re-run evals — use these numbers.
+All experiments complete as of 2026-06-25. Do not re-run evals — use these numbers.
 
 | Claim | Number | Source file |
 |---|---|---|
@@ -115,17 +120,30 @@ All experiments complete as of 2026-06-24. Do not re-run evals — use these num
 | P21 in-distribution accuracy | **49.7%** (271/545) | `eval_results_traj_enriched_point.json` |
 | P21 cross-format accuracy (plain prompts) | **30.3%** (242/798) | `eval_results_phase21_798.json` |
 | P16 on enriched prompts (cross-format) | **58.0%** (316/545) | `eval_results_phase16_545.json` |
+| **P23 stratified CE overall (1,287 examples)** | **37.5%** (+12.2pp vs P22 25.3%) | `eval_results_phase23.json` |
+| P23 GoCreate accuracy | **77.6%** (218/281) — structural visibility confirmed | `eval_results_phase23.json` |
+| P23 GoSched/GoEnd despite balancing | **0% / 0%** — runtime state gap, not distributional | `eval_results_phase23.json` |
+| P23 GoUnblock (uninstrumented val) | **0%** (0/55) — confirms Class 2 thesis | `eval_results_phase23.json` |
 
 **Eval results location (gitignored — do not delete):** `eval/results/`
 
 ---
 
-## Current Status: PAPER DRAFTED — FINAL PROOFREAD + SUBMIT
+## Current Status: ALL EXPERIMENTS COMPLETE — FINAL PAPER UPDATE + SUBMIT
 
-**Deadline: Mon 30 Jun 2026 AoE (~6 days from 2026-06-24)**
+**Deadline: Mon 30 Jun 2026 AoE (~4 days from 2026-06-26)**
 
-All experiments complete. Paper drafted and compiles clean at **11 pages** (main text ends page 10,
-page 11 references-only — page-limit compliant). Remaining: final prose read-through, anonymity sweep, submit.
+**Phase 23 complete.** Results: 37.5% overall (+12.2pp vs P22). GoSched/GoEnd remain 0% despite
+balanced training — proving runtime-state gap, not distributional gap. Paper Discussion section
+needs updating to reflect this refined taxonomy finding.
+
+**Remaining tasks (in order):**
+1. Update Discussion in `ICSE 2027_Templates/weave-research/main.tex` with P23 findings
+2. Revise Three-Class Taxonomy: Class 1 → "runtime state gaps" (GoSched/GoEnd join GoUnblock)
+3. Final prose read-through + double-anonymity sweep
+4. Submit by Mon 30 Jun AoE
+
+Paper compiles clean at **11 pages** (main text ends page 10, page 11 references-only).
 
 ### Paper finalization (2026-06-24)
 
@@ -143,24 +161,28 @@ page 11 references-only — page-limit compliant). Remaining: final prose read-t
 
 ---
 
-## Three-Class Limitation Taxonomy (use in paper)
+## Three-Class Limitation Taxonomy (use in paper) — REVISED after Phase 23
 
-**Class 1 — Distributional gaps (solvable by stratified sampling):**
-GoEnd (1.5% train, 0% val acc), GoSched (0.5% train, 0% val acc). Model never sees enough.
+**Class 1 — Runtime-state gaps (observability limit at scheduler/function layer):**
+GoSched (0.5% train, 0% acc) and GoEnd (1.5% train, 0% acc). Phase 23 proves this is NOT
+purely distributional: balanced training (200 examples each) leaves both at 0%. The scheduler
+preempts on signals invisible in the trace (instruction count, GC pressure, time-slice expiry);
+goroutine termination requires tracking function return depth — neither is emitted by the Go
+runtime tracer. Fix: same instrumentation principle as Class 2, but at the goroutine-lifecycle layer.
 
-**Class 2 — Observability gap (information-theoretic limit, fixed by Phase 21):**
+**Class 2 — Channel/mutex observability gap (information-theoretic limit, fixed by Phase 21):**
 GoUnblock (15.6% train, **0% acc** without instrumentation). The causal event (channel recv /
 mutex unlock) is invisible to the native Go runtime tracer. WeaveChan/WeaveMutex fixes this.
-Phase 20 confirmed: 18 enriched training examples → 4% GoUnblock on 798 unseen GoKer examples.
+Phase 21 confirmed: 308 enriched training examples → 11.4% GoUnblock in-distribution (4/35).
 
 **Class 3 — Semantic confusion (addressable with richer state):**
 GoStart/GoBlock (24.8% of all errors). Model anchors on prior event rather than goroutine state
 direction. Fix: add `blocked_on` field explicitly to prompt state.
 
-**One-sentence summary:**
-> Format helps with structurally predictable events (GoCreate — visible from source syntax);
-> instrumentation is required for structurally unobservable events (GoUnblock — causal event
-> invisible to the tracer without WeaveChan/WeaveMutex).
+**Revised one-sentence summary (for paper):**
+> Stratified sampling lifts global accuracy (+12.2pp, Phase 23) but cannot recover events whose
+> triggers are invisible to the Go runtime tracer — preemption (GoSched), termination (GoEnd),
+> and channel causality (GoUnblock) all require instrumentation, not just more training data.
 
 ---
 

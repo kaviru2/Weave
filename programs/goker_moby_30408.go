@@ -10,7 +10,6 @@ package main
 import (
 	"errors"
 	"sync"
-	"testing"
 
 	"os"
 	"runtime/trace"

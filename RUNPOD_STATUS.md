@@ -4,6 +4,52 @@ Live tracker for GPU training runs. Update after each run.
 
 ---
 
+## Session 2026-06-25 — Phase 23 Stratified CE Training — ✅ COMPLETE
+
+| Field | Value |
+|-------|-------|
+| **Status** | ✅ DONE — pod terminated 2026-06-25 |
+| **Pod name** | phase-23 |
+| **GPU** | L4 (24GB VRAM) |
+| **IP / Port** | 213.173.105.25 : 10087 |
+| **Model** | Local snapshot: `/workspace/hf_cache/hub/models--Qwen--Qwen3-8B/snapshots/b968826d9c46dd6066d109eabc6255188de91218` (local path used to bypass Unsloth quota-hit auto-redirect) |
+| **Train data** | `train_point_dups_balanced.jsonl` (2,004 ex — balanced 200/class) |
+| **Val data** | `val_point_dups.jsonl` (1,287 ex, 103 GoKer) |
+| **Adapter (HF)** | `kavirubc/weave-ccwm-qwen3-8b-ce-balanced-lora` |
+| **Local result** | `eval/results/eval_results_phase23.json` |
+
+**Results:**
+- **Overall: 37.5%** (482/1287) — +12.2pp vs Phase 22 (25.3%)
+- **GoCreate: 77.6%** (218/281) — structural visibility confirmed
+- **GoSched: 0%** (0/80) — balanced training insufficient; runtime-state gap
+- **GoEnd: 0%** (0/86) — balanced training insufficient; runtime-state gap
+- **GoUnblock: 0%** (0/55) — confirms Class 2 thesis (uninstrumented val)
+- **GoBlock: 24.3%** | **GoStart: 40.1%**
+
+**Key finding:** Stratified sampling necessary but not sufficient for GoSched/GoEnd.
+Both events require runtime state invisible to the Go tracer (preemption counters, goroutine
+return depth). Taxonomy revised: GoSched/GoEnd are a runtime-state gap (same root cause as
+GoUnblock), not a simple distributional problem. See CLAUDE.md taxonomy section.
+
+**Download results:**
+```bash
+scp -P 10087 -i ~/.ssh/id_runpod root@213.173.105.25:/root/eval_results_phase23.json eval/results/eval_results_phase23.json
+scp -P 10087 -i ~/.ssh/id_runpod -r root@213.173.105.25:/workspace/lora_adapter_phase23 lora_adapter_phase23/
+```
+
+---
+
+## Session 2026-06-25 — Phase 22 Expanded Eval — COMPLETE
+
+| Field | Value |
+|-------|-------|
+| **Status** | DONE — pod terminated 2026-06-25 |
+| **GPU** | RTX 2000 Ada (16GB) |
+| **Result** | **25.3%** (326/1287), **3.6% GoUnblock** (2/55) on 103 GoKer |
+| **Local file** | `eval/results/eval_results_phase22.json` |
+
+---
+
 ## Session 2026-06-25 — Phase 22 Dataset Expansion & Inference — PLANNED
 
 ### Expanded Evaluation on 103 GoKer Bugs

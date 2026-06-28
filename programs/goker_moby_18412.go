@@ -12,7 +12,6 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
-	"testing"
 	"time"
 
 	"os"

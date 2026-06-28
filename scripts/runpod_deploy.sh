@@ -14,6 +14,15 @@
 #   MAX_SEQ_LEN  — max sequence length (default: 4096)
 #   KL_WEIGHT    — KL loss weight for Phase 14 (default: 1.0; 0 = pure CE ablation)
 #   USE_KL       — set to "1" to use train_lora_kl.py instead of train_lora_unsloth.py
+#   LOCAL_TRAIN_FILE / LOCAL_VAL_FILE — local path to upload (default: train_point_dups.jsonl)
+#   REMOTE_TRAIN_FILE / REMOTE_VAL_FILE — remote path on pod (default: /root/train_point_dups.jsonl)
+#
+# Instrumentation-only ablation (Phase 25):
+#   LOCAL_TRAIN_FILE=dataset/output/train_point_dups_masked.jsonl \
+#   REMOTE_TRAIN_FILE=/root/train_point_dups_masked.jsonl \
+#   OUTPUT_DIR=/root/lora_adapter_masked \
+#   MODEL_ID=<Qwen2.5-Coder-7B snapshot path> \
+#   RUNPOD_IP=<ip> RUNPOD_PORT=<port> bash scripts/runpod_deploy.sh
 
 set -e
 
@@ -33,6 +42,12 @@ fi
 KL_WEIGHT="${KL_WEIGHT:-1.0}"
 USE_KL="${USE_KL:-0}"
 USE_TRAJ="${USE_TRAJ:-0}"
+# Ablation override: set LOCAL_TRAIN_FILE/LOCAL_VAL_FILE to upload a different dataset
+# The remote TRAIN_FILE/VAL_FILE vars control what runpod_pod.sh reads on the pod.
+LOCAL_TRAIN_FILE="${LOCAL_TRAIN_FILE:-dataset/output/train_point_dups.jsonl}"
+LOCAL_VAL_FILE="${LOCAL_VAL_FILE:-dataset/output/val_point_dups.jsonl}"
+REMOTE_TRAIN_FILE="${REMOTE_TRAIN_FILE:-/root/train_point_dups.jsonl}"
+REMOTE_VAL_FILE="${REMOTE_VAL_FILE:-/root/val_point_dups.jsonl}"
 
 SSH_OPTS="-p $RUNPOD_PORT -i $RUNPOD_KEY -o StrictHostKeyChecking=no"
 SCP_OPTS="-P $RUNPOD_PORT -i $RUNPOD_KEY -o StrictHostKeyChecking=no"
@@ -61,9 +76,10 @@ if [ "$USE_TRAJ" = "1" ]; then
         scripts/runpod_pod.sh \
         root@$RUNPOD_IP:/root/
 else
+    # Upload train/val files — supports LOCAL_TRAIN_FILE override for ablations
+    scp $SCP_OPTS "$LOCAL_TRAIN_FILE" "root@$RUNPOD_IP:$REMOTE_TRAIN_FILE"
+    scp $SCP_OPTS "$LOCAL_VAL_FILE" "root@$RUNPOD_IP:$REMOTE_VAL_FILE"
     scp $SCP_OPTS \
-        dataset/output/train_point_dups.jsonl \
-        dataset/output/val_point_dups.jsonl \
         dataset/train_lora_unsloth.py \
         eval/simulation_rollout.py \
         scripts/run_eval.py \
@@ -84,7 +100,7 @@ echo "[4/4] Launching training in tmux session 'train'..."
 ssh $SSH_OPTS root@$RUNPOD_IP "
     tmux kill-session -t train 2>/dev/null || true
     tmux new-session -d -s train
-    tmux send-keys -t train 'MODEL_ID=$MODEL_ID EPOCHS=$EPOCHS BATCH_SIZE=$BATCH_SIZE GRAD_ACCUM=$GRAD_ACCUM MAX_SEQ_LEN=$MAX_SEQ_LEN KL_WEIGHT=$KL_WEIGHT USE_KL=$USE_KL USE_TRAJ=$USE_TRAJ bash /root/runpod_pod.sh 2>&1 | tee /root/train.log' Enter
+    tmux send-keys -t train 'MODEL_ID=$MODEL_ID EPOCHS=$EPOCHS BATCH_SIZE=$BATCH_SIZE GRAD_ACCUM=$GRAD_ACCUM MAX_SEQ_LEN=$MAX_SEQ_LEN KL_WEIGHT=$KL_WEIGHT USE_KL=$USE_KL USE_TRAJ=$USE_TRAJ TRAIN_FILE=$REMOTE_TRAIN_FILE VAL_FILE=$REMOTE_VAL_FILE bash /root/runpod_pod.sh 2>&1 | tee /root/train.log' Enter
     echo 'Training launched.'
 "
 

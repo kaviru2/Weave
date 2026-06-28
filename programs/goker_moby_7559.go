@@ -17,7 +17,6 @@ package main
 import (
 	"net"
 	"sync"
-	"testing"
 
 	"os"
 	"runtime/trace"

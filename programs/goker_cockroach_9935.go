@@ -20,7 +20,6 @@ import (
 	"errors"
 	"math/rand"
 	"sync"
-	"testing"
 
 	"os"
 	"runtime/trace"

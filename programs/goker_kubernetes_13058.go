@@ -10,7 +10,6 @@ package main
 import (
 	"fmt"
 	"sync"
-	"testing"
 	"time"
 
 	"os"

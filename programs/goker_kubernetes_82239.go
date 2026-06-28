@@ -9,7 +9,6 @@ package main
 
 import (
 	"strconv"
-	"testing"
 	"time"
 
 	"os"

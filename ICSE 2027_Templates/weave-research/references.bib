@@ -1,35 +1,3 @@
-% ── Section F: Formal Concurrent Verification ─────────────────────────────────
-
-@inproceedings{godefroid97,
-  author    = {Patrice Godefroid},
-  title     = {Model Checking for Programming Languages using {VeriSoft}},
-  booktitle = {Proceedings of the 24th {ACM} {SIGPLAN-SIGACT} Symposium on
-               Principles of Programming Languages ({POPL})},
-  year      = {1997},
-  pages     = {174--186},
-  publisher = {ACM},
-}
-
-@inproceedings{dpor,
-  author    = {Cormac Flanagan and Patrice Godefroid},
-  title     = {Dynamic Partial-Order Reduction for Model Checking Software},
-  booktitle = {Proceedings of the 32nd {ACM} {SIGPLAN-SIGACT} Symposium on
-               Principles of Programming Languages ({POPL})},
-  year      = {2005},
-  pages     = {110--121},
-  publisher = {ACM},
-}
-
-@inproceedings{flanagan03,
-  author    = {Cormac Flanagan and Shaz Qadeer},
-  title     = {A Type and Effect System for Atomicity},
-  booktitle = {Proceedings of the {ACM} {SIGPLAN} 2003 Conference on
-               Programming Language Design and Implementation ({PLDI})},
-  year      = {2003},
-  pages     = {338--349},
-  publisher = {ACM},
-}
-
 % ── Section A: Code World Models and Execution Modeling ──────────────────────
 
 @misc{cwm,
@@ -204,11 +172,168 @@
   year         = {2024}
 }
 
-% ── Artifacts (anonymised for submission) ────────────────────────────────────
+% ── Section F: Formal Verification and Partial-Order Reduction ────────────────
+
+@book{godefroid1996,
+  author    = {Patrice Godefroid},
+  title     = {Partial-Order Methods for the Verification of Concurrent Systems: An Approach to the State-Explosion Problem},
+  series    = {Lecture Notes in Computer Science},
+  volume    = {1032},
+  publisher = {Springer},
+  year      = {1996},
+  isbn      = {978-3-540-60751-9}
+}
+
+@inproceedings{flanagan2002,
+  author    = {Cormac Flanagan and Stephen N. Freund and Shaz Qadeer},
+  title     = {Thread-Modular Verification for Shared-Memory Programs},
+  booktitle = {Proceedings of the 11th European Symposium on Programming (ESOP 2002)},
+  series    = {Lecture Notes in Computer Science},
+  volume    = {2305},
+  pages     = {262--277},
+  publisher = {Springer},
+  year      = {2002}
+}
+
+@inproceedings{flanagan2005dynamic,
+  author    = {Flanagan, Cormac and Godefroid, Patrice},
+  title     = {Dynamic partial-order reduction for model checking software},
+  booktitle = {Proceedings of the 32nd ACM SIGPLAN-SIGACT Symposium on Principles of Programming Languages (POPL 2005)},
+  pages     = {110--121},
+  year      = {2005},
+  publisher = {ACM},
+  doi       = {10.1145/1040305.1040315}
+}
+
+@inproceedings{gu2024cruxeval,
+  title     = {{CRUXEval}: A Benchmark for Code Reasoning, Understanding and Execution},
+  author    = {Gu, Alex and Roziere, Baptiste and Leather, Hugh James and Solar-Lezama, Armando and Synnaeve, Gabriel and Wang, Sida},
+  booktitle = {Proceedings of the 41st International Conference on Machine Learning (ICML 2024)},
+  pages     = {16568--16621},
+  year      = {2024}
+}
+
+@misc{roziere2023codellama,
+  title         = {Code Llama: Open Foundation Models for Code},
+  author        = {Baptiste Rozière and Jonas Gehring and Fabian Gloeckle and Sten Sootla and Itai Gat and Xiaoqing Ellen Tan and Morgane Billy and James Cassell and Romain Sauvestre and Alexei Baevski and others},
+  year          = {2023},
+  eprint        = {2308.12950},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.CL}
+}
+
+@article{guo2024deepseekcoder,
+  title   = {DeepSeek-Coder: When the Large Language Model Meets Programming -- The Rise of Code Intelligence},
+  author  = {Daya Guo and Qihao Zhu and Dejian Yang and Zhenda Xie and Kai Dong and Wentao Zhang and Guanting Chen and Xiao Bi and Y. Wu and Y. K. Li and Fuli Luo and Yingfei Xiong and Wenfeng Liang},
+  journal = {arXiv preprint arXiv:2401.14196},
+  year    = {2024}
+}
+
+@misc{davis2024chatdbg,
+  title         = {ChatDBG: Augmenting Debugging with Large Language Models},
+  author        = {Phillip A. Davis and Roberto Blanco and Yuepeng Peng and Cristina V. Lopes and Thomas Ball},
+  year          = {2024},
+  eprint        = {2403.16354},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.SE}
+}
+
+@article{li2023starcoder,
+  title={StarCoder: may the source be with you!},
+  author={Li, Raymond and Ben Allal, Loubna and Zi, Yangtian and Muennighoff, Niklas and Kocetkov, Denis and Mou, Chenghao and Marone, Marc and Akiki, Christopher and Li, Jia and Chim, Jenny and Liu, Qian and Zheltonozhskii, Evgenii and Zhuo, Terry Yue and Wang, Thomas and Dehaene, Olivier and Davaadorj, Mishig and Lamy-Poirier, Joel and Monteiro, Jo{\~a}o and Shliazhko, Oleh and Gontier, Nicolas and Meade, Nicholas and Zebaze, Armel and Yee, Ming-Ho and Umapathi, Logesh Kumar and Zhu, Jian and Lipkin, Benjamin and Oblokulov, Muhtasham and Wang, Zhiruo and Murthy, Rudra and Stillerman, Jason and Patel, Siva Sankalp and Abulkhanov, Dmitry and Zocca, Marco and Dey, Manan and Zhang, Zhihan and Fahmy, Nourhan and Bhattacharyya, Urvashi and Yu, Wenhao and Singh, Swayam and Luccioni, Sasha and Villegas, Paulo and Kunakov, Maxim and Zhdanov, Fedor and Romero, Manuel and Lee, Tony and Timor, Nadav and Ding, Jennifer and Schlesinger, Claire and Schoelkopf, Hailey and Ebert, Jana and Dao, Tri and Mishra, Mayank and Gu, Alexander and Robinson, Jennifer and Anderson, Carolyn Jane and Dolan-Gavitt, Brendan and Contractor, Danish and Reddy, Siva and Fried, Daniel and Bahdanau, Dzmitry and Jernite, Yacine and Mu{\~n}oz Ferrandis, Carlos and Hughes, Sean M. and Wolf, Thomas sheeting and Guha, Arjun and von Werra, Leandro and de Vries, Harm},
+  journal={Transactions on Machine Learning Research},
+  year={2023}
+}
+
+@article{Owicki1976,
+  author  = {Susan S. Owicki and David Gries},
+  title   = {An Axiomatic Proof Technique for Parallel Programs I},
+  journal = {Acta Informatica},
+  year    = {1976},
+  volume  = {6},
+  pages   = {319--340},
+  doi     = {10.1007/BF00268134}
+}
+
+@article{Jones1983,
+  author  = {Cliff B. Jones},
+  title   = {Tentative Steps Toward a Development Method for Interfering Programs},
+  journal = {ACM Transactions on Programming Languages and Systems},
+  year    = {1983},
+  volume  = {5},
+  number  = {4},
+  pages   = {596--619},
+  doi     = {10.1145/69575.69577}
+}
+
+@article{Lipton1975,
+  author  = {Richard J. Lipton},
+  title   = {Reduction: A Method of Proving Properties of Parallel Programs},
+  journal = {Communications of the ACM},
+  year    = {1975},
+  volume  = {18},
+  number  = {12},
+  pages   = {717--721},
+  doi     = {10.1145/361227.361234}
+}
+
+@inproceedings{jimenez2024swebench,
+  author    = {Carlos E. Jimenez and John Yang and Alexander Wettig and Shunyu Yao and Kexin Pei and Ofir Press and Karthik R. Narasimhan},
+  title     = {{SWE}-bench: Can Language Models Resolve Real-world Github Issues?},
+  booktitle = {The Twelfth International Conference on Learning Representations (ICLR 2024)},
+  year      = {2024}
+}
+
+@inproceedings{gabet2020static,
+  title={Static Race Detection and Mutex Safety and Liveness for Go Programs},
+  author={Gabet, Julia and Yoshida, Nobuko},
+  booktitle={34th European Conference on Object-Oriented Programming (ECOOP 2020)},
+  volume={166},
+  year={2020}
+}
+
+@misc{vyukov2015gofuzz,
+  title={Randomized testing for Go},
+  author={Vyukov, Dmitry},
+  year={2015},
+  howpublished={\url{https://github.com/dvyukov/go-fuzz}}
+}
+
+@inproceedings{madaan2023selfrefine,
+  title={Self-Refine: Iterative Refinement with Self-Feedback},
+  author={Madaan, Aman and Tandon, Niket and Gupta, Prakhar and Hallinan, Skyler and Gao, Luyu and Wiegreffe, Sarah and Alon, Uri and Dziri, Nouha and Prabhumoye, Shrimai and Yang, Yiming and Gupta, Shashank and Majumder, Bodhisattwa Prasad and Hermann, Katherine and Welleck, Sean and Yazdanbakhsh, Amir and Clark, Peter},
+  booktitle={Advances in Neural Information Processing Systems (NeurIPS 2023)},
+  volume={36},
+  year={2023}
+}
+
+@inproceedings{chen2023codet,
+  author={Chen, Bei and Zhang, Fengji and Nguyen, Anh and Zan, Daoguang and Lin, Zeqi and Lou, Jian-Guang and Chen, Weizhu},
+  title={CodeT: Code Generation with Generated Tests},
+  booktitle={The Eleventh International Conference on Learning Representations (ICLR 2023)},
+  year={2023}
+}
+
+@inproceedings{bouzenia2025repairagent,
+  author={Bouzenia, Islem and Devanbu, Premkumar T. and Pradel, Michael},
+  title={RepairAgent: An Autonomous, LLM-Based Agent for Program Repair},
+  booktitle={Proceedings of the 47th International Conference on Software Engineering (ICSE 2025)},
+  year={2025},
+  pages={2188--2200}
+}
+
+@misc{tracecoder,
+  author       = {Jiangping Huang and Wenguang Ye and Weisong Sun and Jian Zhang and Mingyue Zhang and Yang Liu},
+  title        = {{TraceCoder}: A Trace-Driven Multi-Agent Framework for Automated Debugging of {LLM}-Generated Code},
+  howpublished = {arXiv:2602.06875},
+  year         = {2026}
+}
+
+% ── Artifacts ─────────────────────────────────────────────────────────────────
 
 @misc{anon-artifacts,
-  author       = {Kaviru Hapuarachchi},
+  author       = {Anonymous},
   title        = {Weave: Dataset, Trained Adapters, and Tooling},
-  howpublished = {\url{https://github.com/kaviru2/weave}},
+  howpublished = {Blinded for review},
   year         = {2026}
 }

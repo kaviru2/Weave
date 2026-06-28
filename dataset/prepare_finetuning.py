@@ -14,6 +14,7 @@ Supports two distinct SFT target strategies:
 Verifies and splits programs into 80% train / 20% validation, stratified by pattern.
 """
 
+import argparse
 import os
 import json
 import random
@@ -187,9 +188,23 @@ def smart_truncate_messages(messages: List[Dict[str, str]], max_tokens: int = 40
     return msgs
 
 
+WAITER_KEYS = {"send_waiters", "recv_waiters"}
+
+
+def mask_waiter_fields(trace: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Recursively remove send_waiters/recv_waiters from all dicts in trace."""
+    def _strip(obj: Any) -> Any:
+        if isinstance(obj, dict):
+            return {k: _strip(v) for k, v in obj.items() if k not in WAITER_KEYS}
+        if isinstance(obj, list):
+            return [_strip(item) for item in obj]
+        return obj
+    return _strip(trace)
+
+
 def format_dist_chat_message(
-    program_source: str, 
-    partial_trace: List[Dict[str, Any]], 
+    program_source: str,
+    partial_trace: List[Dict[str, Any]],
     distribution: Dict[str, float]
 ) -> Dict[str, Any]:
     """Formats an SFT example for Explicit Distribution target (KL loss)."""
@@ -305,9 +320,77 @@ def split_programs(aggregated: List[Dict[str, Any]], seed: int = 42) -> Tuple[se
     return train_progs, val_progs
 
 
+def _get_event_type(point_msg: Dict[str, Any]) -> str:
+    """Extracts event_type from a point chat message's assistant content."""
+    try:
+        assistant_content = next(
+            m["content"] for m in point_msg["messages"] if m["role"] == "assistant"
+        )
+        return json.loads(assistant_content)["event_type"]
+    except Exception:
+        return "unknown"
+
+
+def balance_by_event_type(
+    items: List[Dict[str, Any]],
+    min_per_class: int = 200,
+    seed: int = 42,
+) -> List[Dict[str, Any]]:
+    """Oversample rare event types so each class has at least min_per_class examples.
+    Dominant classes are kept as-is (no downsampling). Result is shuffled."""
+    rng = random.Random(seed)
+
+    # Group by event type
+    by_type: Dict[str, List[Dict]] = defaultdict(list)
+    for item in items:
+        by_type[_get_event_type(item)].append(item)
+
+    logging.info("--- EVENT TYPE DISTRIBUTION (before balancing) ---")
+    for et in sorted(by_type):
+        logging.info(f"  {et:12s}: {len(by_type[et])} examples")
+
+    balanced = list(items)  # start with all originals
+    for et, pool in by_type.items():
+        deficit = min_per_class - len(pool)
+        if deficit > 0:
+            oversampled = rng.choices(pool, k=deficit)
+            balanced.extend(oversampled)
+            logging.info(f"  Oversampled {et}: +{deficit} → {len(pool) + deficit} total")
+
+    logging.info("--- EVENT TYPE DISTRIBUTION (after balancing) ---")
+    after: Dict[str, int] = defaultdict(int)
+    for item in balanced:
+        after[_get_event_type(item)] += 1
+    for et in sorted(after):
+        logging.info(f"  {et:12s}: {after[et]} examples")
+
+    rng.shuffle(balanced)
+    return balanced
+
+
 def main():
     """Main execution function."""
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--balanced", action="store_true",
+        help="Oversample rare event types to min_per_class in training set (Phase 23)."
+    )
+    parser.add_argument(
+        "--min-per-class", type=int, default=200,
+        help="Minimum examples per event type when --balanced is set (default: 200)."
+    )
+    parser.add_argument(
+        "--mask-waiters", action="store_true",
+        help="Strip send_waiters/recv_waiters fields from all prompts (instrumentation-only ablation)."
+    )
+    args = parser.parse_args()
+
     logging.info("Starting SFT dataset preparation...")
+    if args.balanced:
+        logging.info(f"BALANCED MODE: oversampling rare events to min {args.min_per_class} per class.")
+    if args.mask_waiters:
+        logging.info("MASK-WAITERS MODE: stripping send_waiters/recv_waiters from all prompts.")
+
     try:
         aggregated = load_aggregated_dataset()
     except Exception as e:
@@ -320,7 +403,6 @@ def main():
 
     train_dist_items = []
     val_dist_items = []
-    
     train_point_items = []
     val_point_items = []
 
@@ -335,6 +417,9 @@ def main():
         except Exception as e:
             logging.warning(f"Skipping group ({program_id}, {split_percent}%): {e}")
             continue
+
+        if args.mask_waiters:
+            partial_trace = mask_waiter_fields(partial_trace)
 
         # 1. Dist mode SFT format
         dist_msg = format_dist_chat_message(source, partial_trace, dist)
@@ -357,25 +442,34 @@ def main():
             else:
                 val_point_items.append(point_msg)
 
-    # Write output files
-    files_to_write = [
-        ("train_dist.jsonl", train_dist_items),
-        ("val_dist.jsonl", val_dist_items),
-        ("train_point_dups.jsonl", train_point_items),
-        ("val_point_dups.jsonl", val_point_items)
-    ]
+    # Apply stratified oversampling if requested (Phase 23)
+    if args.balanced:
+        train_point_balanced = balance_by_event_type(
+            train_point_items, min_per_class=args.min_per_class
+        )
+    else:
+        train_point_balanced = None
 
+    # Write output files
     os.makedirs(os.path.join(DATASET_DIR, "kaggle_upload"), exist_ok=True)
 
+    suffix = "_masked" if args.mask_waiters else ""
+    files_to_write = [
+        (f"train_dist{suffix}.jsonl", train_dist_items),
+        (f"val_dist{suffix}.jsonl", val_dist_items),
+        (f"train_point_dups{suffix}.jsonl", train_point_items),
+        (f"val_point_dups{suffix}.jsonl", val_point_items),
+    ]
+    if train_point_balanced is not None:
+        files_to_write.append((f"train_point_dups_balanced{suffix}.jsonl", train_point_balanced))
+
     for fname, data_list in files_to_write:
-        # Write to primary output directory
         out_path = os.path.join(DATASET_DIR, fname)
         with open(out_path, "w") as f:
             for item in data_list:
                 f.write(json.dumps(item) + "\n")
         logging.info(f"Wrote {len(data_list)} examples to {out_path}")
 
-        # Sync to kaggle_upload directory
         kaggle_out_path = os.path.join(DATASET_DIR, "kaggle_upload", fname)
         with open(kaggle_out_path, "w") as f:
             for item in data_list:

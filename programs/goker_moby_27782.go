@@ -17,7 +17,6 @@ package main
 import (
 	"errors"
 	"sync"
-	"testing"
 	"time"
 
 	"os"

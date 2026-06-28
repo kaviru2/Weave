@@ -21,7 +21,6 @@ package main
 
 import (
 	"sync"
-	"testing"
 	"time"
 
 	"os"

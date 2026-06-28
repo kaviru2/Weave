@@ -8,7 +8,6 @@
 package main
 
 import (
-	"testing"
 	"time"
 
 	"os"
@@ -88,7 +87,6 @@ func NewServerHandlerTransport(writer ResponseWriter) ServerTransport {
 }
 
 type handleStreamTest struct {
-	
 	rw testHandlerResponseWriter
 	ht *serverHandlerTransport
 }
@@ -97,14 +95,13 @@ func newHandleStreamTest() *handleStreamTest {
 	rw := newTestHandlerResponseWriter().(testHandlerResponseWriter)
 	ht := NewServerHandlerTransport(rw)
 	return &handleStreamTest{
-		t:  t,
 		rw: rw,
 		ht: ht.(*serverHandlerTransport),
 	}
 }
 
-func testHandlerTransportHandleStreams(, handleStream func(st *handleStreamTest)) {
-	st := newHandleStreamTest(t)
+func testHandlerTransportHandleStreams(handleStream func(st *handleStreamTest)) {
+	st := newHandleStreamTest()
 	st.ht.HandleStreams(func() { go handleStream(st) })
 }
 
@@ -118,7 +115,7 @@ func main() {
 		}
 	}
 
-	testHandlerTransportHandleStreams(t, func(st *handleStreamTest) {
+	testHandlerTransportHandleStreams(func(st *handleStreamTest) {
 		st.ht.WriteStatus()
 		st.ht.Write()
 	})
