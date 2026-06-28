@@ -188,9 +188,23 @@ def smart_truncate_messages(messages: List[Dict[str, str]], max_tokens: int = 40
     return msgs
 
 
+WAITER_KEYS = {"send_waiters", "recv_waiters"}
+
+
+def mask_waiter_fields(trace: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Recursively remove send_waiters/recv_waiters from all dicts in trace."""
+    def _strip(obj: Any) -> Any:
+        if isinstance(obj, dict):
+            return {k: _strip(v) for k, v in obj.items() if k not in WAITER_KEYS}
+        if isinstance(obj, list):
+            return [_strip(item) for item in obj]
+        return obj
+    return _strip(trace)
+
+
 def format_dist_chat_message(
-    program_source: str, 
-    partial_trace: List[Dict[str, Any]], 
+    program_source: str,
+    partial_trace: List[Dict[str, Any]],
     distribution: Dict[str, float]
 ) -> Dict[str, Any]:
     """Formats an SFT example for Explicit Distribution target (KL loss)."""
@@ -365,11 +379,17 @@ def main():
         "--min-per-class", type=int, default=200,
         help="Minimum examples per event type when --balanced is set (default: 200)."
     )
+    parser.add_argument(
+        "--mask-waiters", action="store_true",
+        help="Strip send_waiters/recv_waiters fields from all prompts (instrumentation-only ablation)."
+    )
     args = parser.parse_args()
 
     logging.info("Starting SFT dataset preparation...")
     if args.balanced:
         logging.info(f"BALANCED MODE: oversampling rare events to min {args.min_per_class} per class.")
+    if args.mask_waiters:
+        logging.info("MASK-WAITERS MODE: stripping send_waiters/recv_waiters from all prompts.")
 
     try:
         aggregated = load_aggregated_dataset()
@@ -397,6 +417,9 @@ def main():
         except Exception as e:
             logging.warning(f"Skipping group ({program_id}, {split_percent}%): {e}")
             continue
+
+        if args.mask_waiters:
+            partial_trace = mask_waiter_fields(partial_trace)
 
         # 1. Dist mode SFT format
         dist_msg = format_dist_chat_message(source, partial_trace, dist)
@@ -430,14 +453,15 @@ def main():
     # Write output files
     os.makedirs(os.path.join(DATASET_DIR, "kaggle_upload"), exist_ok=True)
 
+    suffix = "_masked" if args.mask_waiters else ""
     files_to_write = [
-        ("train_dist.jsonl", train_dist_items),
-        ("val_dist.jsonl", val_dist_items),
-        ("train_point_dups.jsonl", train_point_items),
-        ("val_point_dups.jsonl", val_point_items),
+        (f"train_dist{suffix}.jsonl", train_dist_items),
+        (f"val_dist{suffix}.jsonl", val_dist_items),
+        (f"train_point_dups{suffix}.jsonl", train_point_items),
+        (f"val_point_dups{suffix}.jsonl", val_point_items),
     ]
     if train_point_balanced is not None:
-        files_to_write.append(("train_point_dups_balanced.jsonl", train_point_balanced))
+        files_to_write.append((f"train_point_dups_balanced{suffix}.jsonl", train_point_balanced))
 
     for fname, data_list in files_to_write:
         out_path = os.path.join(DATASET_DIR, fname)

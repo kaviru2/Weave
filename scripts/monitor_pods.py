@@ -31,13 +31,13 @@ except ImportError:
 
 PODS = [
     {
-        "name": "Phase 23",
-        "desc": "Balanced CE / Qwen3-8B / L4",
-        "host": os.environ.get("RUNPOD_IP", "213.173.105.25"),
-        "port": os.environ.get("RUNPOD_PORT", "10087"),
-        "log":  "/root/train_phase23.log",
-        "result": "/workspace/lora_adapter_phase23/adapter_config.json",
-        "color": "cyan",
+        "name": "Phase 24",
+        "desc": "7B Wrapper / Qwen2.5-Coder / RTX 4000 Ada",
+        "host": os.environ.get("RUNPOD_IP", "213.173.108.13"),
+        "port": os.environ.get("RUNPOD_PORT", "18549"),
+        "log":  "/root/train.log",
+        "result": "/root/lora_adapter_traj/adapter_config.json",
+        "color": "magenta",
     },
 ]
 
@@ -60,7 +60,11 @@ def ssh(host, port, cmd):
 def fetch_pod(pod):
     host, port = pod["host"], pod["port"]
     done_raw   = ssh(host, port, f"test -f {pod['result']} && echo DONE || echo RUNNING")
-    log_raw    = ssh(host, port, f"tail -6 {pod['log']} 2>/dev/null || echo '(log not yet created)'")
+    # Extract last tqdm step line + last few INFO lines separately
+    log_raw    = ssh(host, port,
+        f"{{ grep -oE '[0-9]+%\\|[^|]*\\| [0-9]+/[0-9]+ \\[[^]]+\\]' {pod['log']} 2>/dev/null | tail -1; "
+        f"grep -E 'INFO|accuracy|Accuracy|loss|Error|Traceback|Training completed|PHASE' {pod['log']} 2>/dev/null | tail -5; }} || "
+        f"tail -6 {pod['log']} 2>/dev/null || echo '(log not yet created)'")
     gpu_raw    = ssh(host, port,
         "nvidia-smi --query-gpu=name,utilization.gpu,memory.used,memory.total,temperature.gpu "
         "--format=csv,noheader,nounits 2>/dev/null || echo 'N/A'")

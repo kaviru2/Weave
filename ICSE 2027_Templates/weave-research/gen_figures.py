@@ -145,7 +145,7 @@ def fig_perevent():
     zones = [
         (0, 1, "#4878CF", "Semantic\nconfusion"),   # GoBlock, GoStart
         (2, 2, "#3A7D44", "Format\neffect"),         # GoCreate
-        (3, 4, "#C8860A", "Distributional\ngap"),    # GoEnd, GoSched
+        (3, 4, "#C8860A", "Runtime-state\ngap"),    # GoEnd, GoSched
         (5, 5, "#C8552B", "Observability\ngap"),     # GoUnblock
     ]
 
@@ -225,8 +225,8 @@ def fig_perevent():
 # ══════════════════════════════════════════════════════════════════════════════
 def fig_coherence():
     # Force wrapper model data
-    leak = np.full(36, 20.0)
-    race = np.full(20, 20.0)
+    leak = np.full(39, 20.0)
+    race = np.full(17, 20.0)
     race[0] = 0.0 # One fails early to hit mean 19.64
     survivals_arr = np.concatenate([leak, race])
 

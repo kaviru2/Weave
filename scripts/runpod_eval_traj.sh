@@ -65,6 +65,7 @@ ssh $SSH_OPTS root@$RUNPOD_IP "
         python -u /root/run_eval.py \
             --adapter  /root/lora_adapter_traj \
             --val_file /root/val_point_dups.jsonl \
+            --model_id "${MODEL_ID:-Qwen/Qwen3-8B}" \
             --load_in_4bit \
             --out_file /root/eval_results_traj.json \
             2>&1 | tee /root/eval_traj.log

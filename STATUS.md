@@ -3,6 +3,8 @@
 > Read this first when picking up on a new machine. Then read CLAUDE.md for the full plan.
 
 ### Recent Updates & Changelog
+- **2026-06-28 (peer-review revision sprint):** Peer review received — **Borderline (Weak Accept)**. Three fixable concerns: (1) headline-number inconsistency (Fig 1 "55.8%" vs abstract 6.1%/25.7%), (2) RQ3 corpus confound (instrumented corpus is richer, not just the waiter fields), (3) single-run variance. **Track A writing fixes applied to main.tex today:** Fig 1 caption corrected to 6.1%/25.7%/19.64-step framing; Section VIII one-liner disclaimer restored ("correctness criterion, not a validated bug detector"); "necessary and sufficient" → "necessary, and sufficient to move off zero"; 7B>8B family overclaim softened to "scale alone did not improve recovery"; "goroutine state mechanics" → "source-visible goroutine transitions"; RQ2 coherence framed as FSM-valid (necessary condition). **Track B (instrumentation-only ablation) pending** — same 7B, same instrumented corpus, waiter fields masked vs. present; isolates whether fields or corpus drive GoUnblock recovery. Budget: ~$5 of $20 total.
+- **2026-06-26 (Phase 24 7B wrapper results locked):** Qwen2.5-Coder-7B retrained on causally instrumented corpus (same architecture as Phase 16). Results: **6.1% GoUnblock (OOD, 798 GoKer)**, **25.7% GoUnblock (in-distribution, 545 traj val)**, 35.6% overall OOD. Controlled same-architecture comparison confirms recovery is prompt-driven, not scale-driven. Abstract and RQ3 updated. Results: `eval_results_phase24_7b_wrapper.json`.
 - **2026-06-25 (Phase 23 completed):** Stratified CE training completed on L4 (24GB) @ 213.173.105.25:10087. Balanced dataset (2,004 train / 1,287 val). **Results: 37.5% overall accuracy** on the full 1287-example evaluation set (a +12.2 pp improvement over the unstratified 25.3% of Phase 22). However, individual prediction of rare Class 1 events (GoSched and GoEnd) remained near 0%, proving that frequency balancing alone cannot completely bypass sequential dependency. Evaluated, adapter uploaded to Hugging Face, and paper main.tex updated.
 - **2026-06-25 (Phase 22 complete)**: Expanded evaluation to all **103 GoKer programs (1,287 examples)**. Fixed 37 programs with stale `testing` import from GoKer extraction. Phase 21 Qwen3-8B traj adapter on full set: **25.3% overall, 3.6% GoUnblock (2/55)**. Drop from 30.3% (798 ex) reflects harder programs (more GoSched/GoEnd-heavy bugs) not model regression. GoUnblock recovery confirms causal instrumentation generalises to unseen real-world programs. Results at `eval/results/eval_results_phase22.json`.
 - **2026-06-24 (paper finalized)**: **Research Track paper compiles clean at 11 pages — main text ends on page 10, page 11 references-only (page-limit compliant).** Fixed two matplotlib figure overlaps (Fig 2 stale `p=0.0001` callout + crowded x-labels; Fig 3 annotation behind legend) by editing `gen_figures.py` and regenerating. Cut to meet 10-page main-text limit: removed Fig 6 (GoCreate scatter, redundant w/ Fig 5+Table XII), Table X (qualitative, redundant w/ confusion), Table XIII (signature — kept 0.00/0.18/0.24 numbers inline), and the Acknowledgements section (AI-disclosure deferred to camera-ready; `.tex` comment marks the spot). Removed Gemini 3.1 Pro partial-result claims (reviewer liability) and fixed a Discussion contradiction (it framed the observability gap as unsolved future work). Title/abstract untouched. Canonical paper: `ICSE 2027_Templates/weave-research/main.tex`. **Camera-ready TODO if accepted: restore Acknowledgements/AI disclosure.** Cosmetic: Fig 3 legend still says Leak n=36/Race n=20 vs real 38/17.
@@ -36,15 +38,26 @@
 
 ## Current State
 
-**Target: ICSE 2027 Research Track (deadline Mon 30 Jun 2026 AoE). ALL EXPERIMENTS COMPLETE.**
-Canonical paper: `ICSE 2027_Templates/weave-research/main.tex` (drafted, 11 pages, page-limit compliant).
-**Remaining: update Discussion with Phase 23 findings → proofread → submit.**
+**Target: ICSE 2027 Research Track (deadline Mon 30 Jun 2026 AoE, ~48 hours). REVISION SPRINT.**
+Canonical paper: `ICSE 2027_Templates/weave-research/main.tex` (11 pages, compiles clean).
+Peer review: **Borderline (Weak Accept)** — three fixable issues, plan in `.claude/plans/peer-review-revised-proud-map.md`.
+
+**Track A (free writing fixes): DONE** — all 6 main.tex changes applied (2026-06-28).
+**Track B (instrumentation-only ablation): PENDING** — needs a RunPod pod + ~$5 budget.
+**Track C (seed variance): OPTIONAL** — only if Track B budget remains.
+
+**Immediate next steps:**
+1. Prepare masked-waiter corpus variant (`scripts/prepare_finetuning.py --mask-waiters`)
+2. Spin up RunPod pod, train 7B on masked corpus (~2 GPU-hours, ~$0.60)
+3. Eval masked vs. unmasked; add Table X row + RQ3 paragraph
+4. Final read-through + double-anonymity sweep + compile check
+5. Submit by Mon 30 Jun AoE
 
 **Active branch:** `phase-23-stratified-training`
 
 **Preprint** live on Zenodo (DOI: 10.5281/zenodo.20682004) and arXiv (arXiv:2606.17508).
 
-### Locked Results (all eval runs complete as of 2026-06-24)
+### Locked Results (all eval runs complete)
 
 | Experiment | Number | File |
 |-----------|--------|------|
@@ -52,21 +65,33 @@ Canonical paper: `ICSE 2027_Templates/weave-research/main.tex` (drafted, 11 page
 | Majority baseline | 35.5% | `phase18_numbers.json` |
 | McNemar traj vs CE | **p=0.016**, CI [+1.0, +8.3pp] | `phase18_numbers.json` |
 | GoUnblock without wrappers | **0%** (0/48) | `eval_results_traj_accuracy.json` |
-| GoUnblock with wrappers (same test set) | **4.2%** (2/48) | `eval_results_phase21_798.json` |
-| GoUnblock with wrappers (in-distribution) | **11.4%** (4/35) | `eval_results_traj_enriched_point.json` |
+| **P24: GoUnblock 7B wrapper, OOD (798 GoKer)** | **6.1%** (3/48) | `eval_results_phase24_7b_wrapper.json` |
+| **P24: GoUnblock 7B wrapper, in-dist (545 val)** | **25.7%** (9/35) | `eval_results_phase24_7b_wrapper.json` |
+| **P24: Overall accuracy 7B wrapper (798 GoKer)** | **35.6%** | `eval_results_phase24_7b_wrapper.json` |
+| GoUnblock 8B wrapper, OOD (798 GoKer) | 4.2% (2/48) | `eval_results_phase21_798.json` |
+| GoUnblock 8B wrapper, in-dist (545 val) | 11.4% (4/35) | `eval_results_traj_enriched_point.json` |
 | Coherence Phase 16 | **10.48** mean steps | `rollout_results_traj.json` |
 | Coherence Phase 21 | **19.64** mean steps | `rollout_results_phase21.json` |
 | Phase 21 in-distribution accuracy | **49.7%** (545 traj val) | `eval_results_traj_enriched_point.json` |
-| Phase 21 cross-format accuracy | 30.3% (798 GoKer plain) | `eval_results_phase21_798.json` |
+| Phase 23 stratified CE (1,287 examples) | **37.5%** (+12.2pp vs P22) | `eval_results_phase23.json` |
+
+**PAPER HEADLINE NUMBERS (canonical for all paper text):**
+- RQ1 accuracy: **40.1%** (P16, 798 GoKer)
+- RQ3 GoUnblock OOD: **6.1%** (P24 7B wrapper)
+- RQ3 GoUnblock in-dist: **25.7%** (P24 7B wrapper)
+- Coherence: **19.64** mean FSM-valid steps (P21)
 
 **All adapters saved locally + HuggingFace:**
 - Phase 16 traj: `kavirubc/weave-ccwm-qwen2.5-coder-7b-traj-lora` — `dataset/output/lora_adapter_traj/`
 - Phase 21 traj: `kavirubc/weave-ccwm-qwen3-8b-traj-lora` — `lora_adapter_phase21/`
 
-### Immediate next step: FINAL PROOFREAD + SUBMIT
+### Immediate next step: INSTRUMENTATION ABLATION + SUBMIT
 
-`ICSE 2027_Templates/weave-research/main.tex` — **drafted, compiles clean at 11 pages (10 main + 1 ref), page-limit compliant.**
-Deadline: **Mon 30 Jun 2026 AoE** (~6 days from 2026-06-24).
+`ICSE 2027_Templates/weave-research/main.tex` — **compiles clean at 11 pages (10 main + 1 ref). Track A fixes applied.**
+Deadline: **Mon 30 Jun 2026 AoE** (~48 hours from 2026-06-28).
+
+**Track B ablation needs:** `prepare_finetuning.py --mask-waiters` flag → train 7B → eval → add Table X row + RQ3 paragraph.
+Budget remaining: ~$20 RunPod.
 All numbers locked (see `RESULTS.md`). Remaining: final read-through for prose, double-anonymity sweep, then submit.
 **Camera-ready TODO if accepted:** restore the Acknowledgements section (AI-use disclosure) — `.tex` has a comment marking where.
 
